@@ -1,0 +1,108 @@
+{
+  "info": {
+    "_postman_id": "7e9a1c2b-4f5d-4e3c-8a6d-9b2c3d4e5f6a",
+    "name": "Solana Wallet API",
+    "description": "Collection for testing the Solana wallet transfer API endpoints",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Wallet Operations",
+      "item": [
+        {
+          "name": "Trigger SOL Transfer",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"username\": \"testUser\",\n    \"challengeCompleted\": true,\n    \"solanaAddress\": \"{{recipient_address}}\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:3000/trigger",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3000",
+              "path": ["trigger"]
+            },
+            "description": "Triggers a transfer of 0.1 SOL to the specified Solana address"
+          },
+          "response": [
+            {
+              "name": "Successful Transfer",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"username\": \"testUser\",\n    \"challengeCompleted\": true,\n    \"solanaAddress\": \"{{recipient_address}}\"\n}"
+                },
+                "url": {
+                  "raw": "http://localhost:3000/trigger"
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n    \"status\": \"success\",\n    \"message\": \"SOL sent successfully\",\n    \"signature\": \"2xGVGnwqSHAQEMdHvhXGBTxzz7YdKyUnpyF1LYK3kgGHjKZRqk9PFDBNmPTPAFXmJkHE3YzNHa4Pmj8TEpgHnWHk\",\n    \"amount\": 0.1\n}"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Pre-request Script",
+          "// You can add pre-request logic here if needed"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Test successful response",
+          "pm.test(\"Status code is 200\", function () {",
+          "    pm.response.to.have.status(200);",
+          "});",
+          "",
+          "pm.test(\"Response structure is correct\", function () {",
+          "    const responseData = pm.response.json();",
+          "    pm.expect(responseData).to.have.property('status');",
+          "    pm.expect(responseData).to.have.property('message');",
+          "    ",
+          "    if (responseData.status === 'success') {",
+          "        pm.expect(responseData).to.have.property('signature');",
+          "        pm.expect(responseData).to.have.property('amount');",
+          "    }",
+          "});"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "recipient_address",
+      "value": "",
+      "type": "string",
+      "description": "The Solana address to receive the SOL transfer"
+    }
+  ]
+} 
