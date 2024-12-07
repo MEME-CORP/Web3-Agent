@@ -1,0 +1,20 @@
+
+{
+  "name": "solana-agent",
+  "version": "1.0.0",
+  "description": "A Node.js application that manages a Solana wallet and handles token transfers",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": ["solana", "wallet", "agent"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@solana/web3.js": "^1.87.6",
+    "bs58": "^5.0.0"
+  }
+} 
+
+
