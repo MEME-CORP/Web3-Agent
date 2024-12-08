@@ -59,8 +59,30 @@ async function checkWalletBalance(publicKeyStr) {
 // Function to send SOL to a recipient address
 async function sendSol(recipientAddress, amount) {
     try {
-        const recipientPubkey = new solanaWeb3.PublicKey(recipientAddress);
-        
+        // Add debug logging
+        console.log('Received address:', recipientAddress);
+        console.log('Received amount:', amount);
+
+        // Validate input
+        if (!recipientAddress || typeof recipientAddress !== 'string') {
+            throw new Error(`Invalid recipient address type: ${typeof recipientAddress}`);
+        }
+
+        // Clean the address string (remove any whitespace)
+        recipientAddress = recipientAddress.trim();
+
+        // Log the cleaned address
+        console.log('Cleaned address:', recipientAddress);
+
+        // Validate Solana address
+        let recipientPublicKey;
+        try {
+            recipientPublicKey = new solanaWeb3.PublicKey(recipientAddress);
+            console.log('Valid public key created:', recipientPublicKey.toString());
+        } catch (err) {
+            throw new Error(`Invalid Solana address format: ${err.message}`);
+        }
+
         // Check sender's balance before attempting transfer
         const balance = await connection.getBalance(agentWallet.publicKey);
         if (balance < amount) {
@@ -70,7 +92,7 @@ async function sendSol(recipientAddress, amount) {
         const transaction = new solanaWeb3.Transaction().add(
             solanaWeb3.SystemProgram.transfer({
                 fromPubkey: agentWallet.publicKey,
-                toPubkey: recipientPubkey,
+                toPubkey: recipientPublicKey,
                 lamports: amount,
             })
         );
@@ -110,7 +132,7 @@ const server = http.createServer((req, res) => {
                 const { username, challengeCompleted, solanaAddress } = data;
 
                 // Send 0.1 SOL
-                const amount = solanaWeb3.LAMPORTS_PER_SOL * 0.1;
+                const amount = solanaWeb3.LAMPORTS_PER_SOL * 0.0001;
 
                 sendSol(solanaAddress, amount)
                     .then((signature) => {
