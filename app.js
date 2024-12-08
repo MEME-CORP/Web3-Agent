@@ -12,22 +12,21 @@ const WALLET_PATH = './agent_wallet.json';
 // Function to create or load the agent wallet
 function getAgentWallet() {
     let keypair;
-    if (fs.existsSync(WALLET_PATH)) {
-        const walletData = JSON.parse(fs.readFileSync(WALLET_PATH, 'utf8'));
-        const secretKey = Uint8Array.from(walletData.secretKey);
-        keypair = solanaWeb3.Keypair.fromSecretKey(secretKey);
-    } else {
-        keypair = solanaWeb3.Keypair.generate();
-        const walletData = {
-            publicKey: keypair.publicKey.toBase58(),
-            privateKey: bs58.encode(keypair.secretKey),
-            secretKey: Array.from(keypair.secretKey)
-        };
-        fs.writeFileSync(WALLET_PATH, JSON.stringify(walletData, null, 4));
-        console.log(`Agent wallet created: ${keypair.publicKey.toBase58()}`);
-        console.log('To get SOL for testing, visit https://faucet.solana.com/ and request devnet airdrops');
+    
+    // Check if we have wallet credentials in environment variables
+    if (!process.env.WALLET_PRIVATE_KEY) {
+        throw new Error('WALLET_PRIVATE_KEY environment variable is required');
     }
-    return keypair;
+
+    try {
+        const secretKey = bs58.decode(process.env.WALLET_PRIVATE_KEY);
+        keypair = solanaWeb3.Keypair.fromSecretKey(secretKey);
+        console.log('Loaded wallet from environment variables');
+        return keypair;
+    } catch (error) {
+        console.error('Error loading wallet from environment:', error);
+        throw error;
+    }
 }
 
 const agentWallet = getAgentWallet();
@@ -131,8 +130,8 @@ const server = http.createServer((req, res) => {
                 const data = JSON.parse(body);
                 const { username, challengeCompleted, solanaAddress } = data;
 
-                // Send 0.1 SOL
-                const amount = solanaWeb3.LAMPORTS_PER_SOL * 0.0001;
+                // Send 0.001 SOL
+                const amount = solanaWeb3.LAMPORTS_PER_SOL * 0.001;
 
                 sendSol(solanaAddress, amount)
                     .then((signature) => {
