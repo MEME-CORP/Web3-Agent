@@ -1,36 +1,6 @@
 const http = require('http');
-const fs = require('fs');
 const solanaWeb3 = require('@solana/web3.js');
 const bs58 = require('bs58');
-const { exec } = require('child_process');
-const { promisify } = require('util');
-const execAsync = promisify(exec);
-
-// Path to store the agent wallet keypair
-const WALLET_PATH = './agent_wallet.json';
-
-// Function to create or load the agent wallet
-function getAgentWallet() {
-    let keypair;
-    
-    // Check if we have wallet credentials in environment variables
-    if (!process.env.WALLET_PRIVATE_KEY) {
-        throw new Error('WALLET_PRIVATE_KEY environment variable is required');
-    }
-
-    try {
-        const secretKey = bs58.decode(process.env.WALLET_PRIVATE_KEY);
-        keypair = solanaWeb3.Keypair.fromSecretKey(secretKey);
-        console.log('Loaded wallet from environment variables');
-        return keypair;
-    } catch (error) {
-        console.error('Error loading wallet from environment:', error);
-        throw error;
-    }
-}
-
-const agentWallet = getAgentWallet();
-console.log(`Agent wallet public key: ${agentWallet.publicKey.toBase58()}`);
 
 // Create a connection to the Solana cluster (using devnet)
 const NETWORK = 'devnet';
@@ -49,65 +19,57 @@ async function checkWalletBalance(publicKeyStr) {
     }
 }
 
-// Check initial balance
-(async () => {
-    console.log('\nChecking agent wallet balance...');
-    await checkWalletBalance(agentWallet.publicKey.toString());
-})();
-
 // Function to send SOL to a recipient address
-async function sendSol(recipientAddress, amount) {
+async function sendSol(fromPrivateKey, fromPublicKey, toAddress, amount) {
     try {
-        // Add debug logging
-        console.log('Received address:', recipientAddress);
-        console.log('Received amount:', amount);
+        console.log('Initiating transfer...');
+        console.log('To address:', toAddress);
+        console.log('Amount:', amount);
 
         // Validate input
-        if (!recipientAddress || typeof recipientAddress !== 'string') {
-            throw new Error(`Invalid recipient address type: ${typeof recipientAddress}`);
+        if (!toAddress || typeof toAddress !== 'string') {
+            throw new Error(`Invalid recipient address type: ${typeof toAddress}`);
         }
 
-        // Clean the address string (remove any whitespace)
-        recipientAddress = recipientAddress.trim();
+        // Clean the address string
+        toAddress = toAddress.trim();
 
-        // Log the cleaned address
-        console.log('Cleaned address:', recipientAddress);
+        // Create sender's keypair from private key
+        const secretKey = bs58.decode(fromPrivateKey);
+        const senderKeypair = solanaWeb3.Keypair.fromSecretKey(secretKey);
 
-        // Validate Solana address
-        let recipientPublicKey;
-        try {
-            recipientPublicKey = new solanaWeb3.PublicKey(recipientAddress);
-            console.log('Valid public key created:', recipientPublicKey.toString());
-        } catch (err) {
-            throw new Error(`Invalid Solana address format: ${err.message}`);
+        // Validate sender's public key matches
+        if (senderKeypair.publicKey.toBase58() !== fromPublicKey) {
+            throw new Error('Provided public key does not match the private key');
         }
 
-        // Check sender's balance before attempting transfer
-        const balance = await connection.getBalance(agentWallet.publicKey);
-        if (balance < amount) {
-            throw new Error(`Insufficient balance. Have ${balance / solanaWeb3.LAMPORTS_PER_SOL} SOL, need ${amount / solanaWeb3.LAMPORTS_PER_SOL} SOL`);
+        // Create recipient's public key
+        const recipientPublicKey = new solanaWeb3.PublicKey(toAddress);
+
+        // Check sender's balance
+        const balance = await connection.getBalance(senderKeypair.publicKey);
+        const amountLamports = solanaWeb3.LAMPORTS_PER_SOL * amount;
+        
+        if (balance < amountLamports) {
+            throw new Error(`Insufficient balance. Have ${balance / solanaWeb3.LAMPORTS_PER_SOL} SOL, need ${amount} SOL`);
         }
 
         const transaction = new solanaWeb3.Transaction().add(
             solanaWeb3.SystemProgram.transfer({
-                fromPubkey: agentWallet.publicKey,
+                fromPubkey: senderKeypair.publicKey,
                 toPubkey: recipientPublicKey,
-                lamports: amount,
+                lamports: amountLamports,
             })
         );
 
         const signature = await solanaWeb3.sendAndConfirmTransaction(
             connection,
             transaction,
-            [agentWallet]
+            [senderKeypair]
         );
         
-        // Check balances after transfer
         console.log('\nTransaction successful!');
         console.log(`Signature: ${signature}`);
-        console.log('\nUpdated balances:');
-        await checkWalletBalance(agentWallet.publicKey.toString());
-        await checkWalletBalance(recipientAddress);
         
         return signature;
     } catch (error) {
@@ -116,9 +78,50 @@ async function sendSol(recipientAddress, amount) {
     }
 }
 
+// Function to generate a new wallet
+async function generateWallet() {
+    try {
+        const keypair = solanaWeb3.Keypair.generate();
+        const publicKey = keypair.publicKey.toString();
+        const privateKey = bs58.encode(keypair.secretKey);
+        
+        return {
+            publicKey,
+            privateKey
+        };
+    } catch (error) {
+        console.error('Error generating wallet:', error.message);
+        throw error;
+    }
+}
+
 // Create an HTTP server to receive triggers
 const server = http.createServer((req, res) => {
-    if (req.method === 'POST' && req.url === '/trigger') {
+    // Add new endpoint for wallet generation
+    if (req.method === 'POST' && req.url === '/generate-wallet') {
+        generateWallet()
+            .then((wallet) => {
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({
+                    status: 'success',
+                    message: 'Wallet generated successfully',
+                    wallet: {
+                        publicKey: wallet.publicKey,
+                        privateKey: wallet.privateKey
+                    }
+                }));
+            })
+            .catch(error => {
+                console.error(error);
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({
+                    status: 'error',
+                    message: error.message
+                }));
+            });
+    }
+    // Existing transfer endpoint
+    else if (req.method === 'POST' && req.url === '/trigger') {
         let body = '';
 
         req.on('data', chunk => {
@@ -128,19 +131,20 @@ const server = http.createServer((req, res) => {
         req.on('end', () => {
             try {
                 const data = JSON.parse(body);
-                const { username, challengeCompleted, solanaAddress } = data;
+                const { fromPrivateKey, fromPublicKey, toAddress, amount } = data;
 
-                // Send 0.001 SOL
-                const amount = solanaWeb3.LAMPORTS_PER_SOL * 0.001;
+                if (!fromPrivateKey || !fromPublicKey || !toAddress || !amount) {
+                    throw new Error('Missing required parameters');
+                }
 
-                sendSol(solanaAddress, amount)
+                sendSol(fromPrivateKey, fromPublicKey, toAddress, amount)
                     .then((signature) => {
                         res.writeHead(200, { 'Content-Type': 'application/json' });
                         res.end(JSON.stringify({
                             status: 'success',
                             message: 'SOL sent successfully',
                             signature: signature,
-                            amount: amount / solanaWeb3.LAMPORTS_PER_SOL
+                            amount: amount
                         }));
                     })
                     .catch(error => {
@@ -166,7 +170,7 @@ const server = http.createServer((req, res) => {
     }
 });
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`Server is listening on port ${PORT}`);
 }); 

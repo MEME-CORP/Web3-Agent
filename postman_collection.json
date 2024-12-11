@@ -10,6 +10,39 @@
       "name": "Wallet Operations",
       "item": [
         {
+          "name": "Generate New Wallet",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:3000/generate-wallet",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3000",
+              "path": ["generate-wallet"]
+            },
+            "description": "Generates a new Solana wallet and returns the public and private keys"
+          },
+          "response": [
+            {
+              "name": "Successful Wallet Generation",
+              "originalRequest": {
+                "method": "POST",
+                "header": []
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n    \"status\": \"success\",\n    \"message\": \"Wallet generated successfully\",\n    \"wallet\": {\n        \"publicKey\": \"GENERATED_PUBLIC_KEY\",\n        \"privateKey\": \"GENERATED_PRIVATE_KEY\"\n    }\n}"
+            }
+          ]
+        },
+        {
           "name": "Trigger SOL Transfer",
           "request": {
             "method": "POST",
@@ -21,7 +54,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n    \"username\": \"testUser\",\n    \"challengeCompleted\": true,\n    \"solanaAddress\": \"{{recipient_address}}\"\n}"
+              "raw": "{\n    \"username\": \"testUser\",\n    \"challengeCompleted\": true,\n    \"fromPrivateKey\": \"YOUR_PRIVATE_KEY\",\n    \"fromPublicKey\": \"YOUR_PUBLIC_KEY\",\n    \"toAddress\": \"{{recipient_address}}\",\n    \"amount\": 0.001\n}"
             },
             "url": {
               "raw": "http://localhost:3000/trigger",
@@ -30,7 +63,7 @@
               "port": "3000",
               "path": ["trigger"]
             },
-            "description": "Triggers a transfer of 0.1 SOL to the specified Solana address"
+            "description": "Triggers a SOL transfer using provided wallet credentials"
           },
           "response": [
             {
@@ -40,22 +73,13 @@
                 "header": [],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n    \"username\": \"testUser\",\n    \"challengeCompleted\": true,\n    \"solanaAddress\": \"{{recipient_address}}\"\n}"
-                },
-                "url": {
-                  "raw": "http://localhost:3000/trigger"
+                  "raw": "{\n    \"username\": \"testUser\",\n    \"challengeCompleted\": true,\n    \"fromPrivateKey\": \"PRIVATE_KEY\",\n    \"fromPublicKey\": \"PUBLIC_KEY\",\n    \"toAddress\": \"{{recipient_address}}\",\n    \"amount\": 0.001\n}"
                 }
               },
               "status": "OK",
               "code": 200,
               "_postman_previewlanguage": "json",
-              "header": [
-                {
-                  "key": "Content-Type",
-                  "value": "application/json"
-                }
-              ],
-              "body": "{\n    \"status\": \"success\",\n    \"message\": \"SOL sent successfully\",\n    \"signature\": \"2xGVGnwqSHAQEMdHvhXGBTxzz7YdKyUnpyF1LYK3kgGHjKZRqk9PFDBNmPTPAFXmJkHE3YzNHa4Pmj8TEpgHnWHk\",\n    \"amount\": 0.1\n}"
+              "body": "{\n    \"status\": \"success\",\n    \"message\": \"SOL sent successfully\",\n    \"signature\": \"2xGVGnwqSHAQEMdHvhXGBTxzz7YdKyUnpyF1LYK3kgGHjKZRqk9PFDBNmPTPAFXmJkHE3YzNHa4Pmj8TEpgHnWHk\",\n    \"amount\": 0.001\n}"
             }
           ]
         }

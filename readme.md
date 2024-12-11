@@ -8,6 +8,7 @@ https://web3-agent.onrender.com
 
 ## Features
 - Automated SOL transfers (0.001 SOL per successful challenge)
+- Fresh wallet generation endpoint
 - Environment-based wallet configuration
 - Balance checking functionality
 - Secure transaction handling
@@ -24,16 +25,57 @@ https://web3-agent.onrender.com
 - Solana CLI (optional, for local testing)
 - A Solana wallet with devnet SOL
 
+## Local Development Setup
+
+1. **Clone the repository**
+   ```bash
+   git clone [your-repo-url]
+   cd [your-repo-name]
+   ```
+
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
+
+3. **Configure Environment Variables**
+   Create a `.env` file in the root directory with:
+   ```
+   # Treasury Wallet Configuration
+   TREASURY_PRIVATE_KEY=your_base58_encoded_private_key
+   
+   # Network Configuration
+   SOLANA_NETWORK=devnet
+   
+   # Server Configuration
+   PORT=3000
+   ```
+
+4. **Start the server**
+   ```bash
+   node app.js
+   ```
+
+5. **Test the endpoints**
+   The server will be running at `http://localhost:3000` with the following endpoints:
+   - POST `/create-wallet`: Generates a new Solana wallet
+   - POST `/trigger`: Sends SOL to a specified address
+
+## Testing with Postman
+Import the provided `postman_collection.json` to test the API endpoints.
+
 ## Environment Variables
 Create a `.env` file in the root directory with the following variables:
 
-# Solana Wallet Configuration
-WALLET_PUBLIC_KEY=your_public_key_here
-WALLET_PRIVATE_KEY=your_private_key_here
-WALLET_SECRET_KEY=your_secret_key_array_here
 
 # Network Configuration
 SOLANA_NETWORK=devnet
 
 # Server Configuration
 PORT=3000 
+
+
+#Testnet Tokens
+
+https://solfaucet.com/
+
