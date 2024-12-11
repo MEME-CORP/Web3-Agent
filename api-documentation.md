@@ -2,12 +2,12 @@
 
 ## Overview
 
-The Solana Wallet API provides a lightweight interface for handling SOL token transfers on the Solana blockchain. This API is designed to facilitate automated reward distributions for completed challenges.
+The Solana Wallet API provides a lightweight interface for handling SOL token transfers and wallet generation on the Solana blockchain. This API is designed to facilitate automated reward distributions and wallet management.
 
 ## Base URL
 
 ```
-http://localhost:3000
+https://web3-agent.onrender.com
 ```
 
 ## Authentication
@@ -16,9 +16,49 @@ Currently, the API does not require authentication. However, proper validation o
 
 ## Endpoints
 
-### Transfer SOL
+### 1. Generate Wallet
 
-Triggers a transfer of SOL tokens to a specified Solana wallet address.
+Creates a new Solana wallet and returns the public and private keys.
+
+```http
+POST /generate-wallet
+```
+
+#### Request
+
+##### Headers
+
+| Name          | Type   | Required | Description            |
+|---------------|--------|----------|------------------------|
+| Content-Type  | string | Yes      | application/json       |
+
+#### Response
+
+##### Success Response (200 OK)
+
+```json
+{
+    "status": "success",
+    "message": "Wallet generated successfully",
+    "wallet": {
+        "publicKey": "GENERATED_PUBLIC_KEY",
+        "privateKey": "GENERATED_PRIVATE_KEY"
+    }
+}
+```
+
+##### Error Response (500 Internal Server Error)
+
+```json
+{
+    "status": "error",
+    "message": "Error message details"
+}
+```
+
+### 2. Transfer SOL
+
+Triggers a transfer of SOL tokens from one wallet to another.
 
 ```http
 POST /trigger
@@ -36,9 +76,12 @@ POST /trigger
 
 | Parameter          | Type    | Required | Description                                     |
 |-------------------|---------|----------|-------------------------------------------------|
-| username          | string  | Yes      | The username of the reward recipient            |
-| challengeCompleted| boolean | Yes      | Flag indicating if the challenge was completed  |
-| solanaAddress     | string  | Yes      | Valid Solana wallet address of the recipient    |
+| fromPrivateKey    | string  | Yes      | Private key of the sending wallet               |
+| fromPublicKey     | string  | Yes      | Public key of the sending wallet                |
+| toAddress         | string  | Yes      | Recipient's Solana wallet address               |
+| amount            | number  | Yes      | Amount of SOL to transfer                       |
+| username          | string  | No       | Username of the recipient (optional)            |
+| challengeCompleted| boolean | No       | Flag indicating challenge completion (optional)  |
 
 ##### Example Request
 
@@ -46,7 +89,10 @@ POST /trigger
 {
     "username": "testUser",
     "challengeCompleted": true,
-    "solanaAddress": "YourSolanaWalletAddress"
+    "fromPrivateKey": "YOUR_PRIVATE_KEY",
+    "fromPublicKey": "YOUR_PUBLIC_KEY",
+    "toAddress": "RECIPIENT_SOLANA_ADDRESS",
+    "amount": 0.001
 }
 ```
 
@@ -59,7 +105,7 @@ POST /trigger
     "status": "success",
     "message": "SOL sent successfully",
     "signature": "2xGVGnwqSHAQEMdHvhXGBTxzz7YdKyUnpyF1LYK3kgGHjKZRqk9PFDBNmPTPAFXmJkHE3YzNHa4Pmj8TEpgHnWHk",
-    "amount": 0.000001
+    "amount": 0.001
 }
 ```
 
@@ -69,7 +115,8 @@ POST /trigger
 |------------|--------------------------------------------------|--------------------------------------------------|
 | 400        | Invalid request data                             | `{"status": "error", "message": "Invalid request data"}` |
 | 500        | Invalid public key                               | `{"status": "error", "message": "Invalid public key input"}` |
-| 500        | Insufficient balance                             | `{"status": "error", "message": "Insufficient balance. Have 0 SOL, need 0.1 SOL"}` |
+| 500        | Insufficient balance                             | `{"status": "error", "message": "Insufficient balance. Have X SOL, need Y SOL"}` |
+| 500        | Key mismatch                                     | `{"status": "error", "message": "Provided public key does not match the private key"}` |
 
 ## Rate Limiting
 
@@ -82,8 +129,29 @@ Currently, there are no rate limits implemented. However, transactions are limit
 
 ### JavaScript/TypeScript
 
+#### Generate Wallet
 ```typescript
-const transferSOL = async (username: string, solanaAddress: string) => {
+const generateWallet = async () => {
+  try {
+    const response = await fetch('http://localhost:3000/generate-wallet', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      }
+    });
+    
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Error:', error);
+    throw error;
+  }
+};
+```
+
+#### Transfer SOL
+```typescript
+const transferSOL = async (fromPrivateKey: string, fromPublicKey: string, toAddress: string, amount: number) => {
   try {
     const response = await fetch('http://localhost:3000/trigger', {
       method: 'POST',
@@ -91,9 +159,10 @@ const transferSOL = async (username: string, solanaAddress: string) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        username,
-        challengeCompleted: true,
-        solanaAddress,
+        fromPrivateKey,
+        fromPublicKey,
+        toAddress,
+        amount
       }),
     });
     
@@ -108,28 +177,44 @@ const transferSOL = async (username: string, solanaAddress: string) => {
 
 ### cURL
 
+#### Generate Wallet
+```bash
+curl -X POST http://localhost:3000/generate-wallet \
+  -H "Content-Type: application/json"
+```
+
+#### Transfer SOL
 ```bash
 curl -X POST http://localhost:3000/trigger \
   -H "Content-Type: application/json" \
   -d '{
-    "username": "testUser",
-    "challengeCompleted": true,
-    "solanaAddress": "YourSolanaWalletAddress"
+    "fromPrivateKey": "YOUR_PRIVATE_KEY",
+    "fromPublicKey": "YOUR_PUBLIC_KEY",
+    "toAddress": "RECIPIENT_ADDRESS",
+    "amount": 0.001
   }'
 ```
 
 ## Testing
 
-A Postman collection is available for testing the API endpoints. Import the provided `solana-wallet-api.postman_collection.json` file into Postman to get started.
+A Postman collection is provided for testing both API endpoints. Import the provided `postman_collection.json` file into Postman to get started.
 
 ## Best Practices
 
 1. Always validate Solana addresses before making transfer requests
-2. Handle network errors and timeouts appropriately
+2. Never expose private keys in client-side code
 3. Implement proper error handling for failed transactions
 4. Monitor transaction status using the returned signature
+5. Store private keys securely and never log them
+6. Use HTTPS in production environments
 
 ## Changelog
+
+### Version 1.1.0
+- Added wallet generation endpoint
+- Updated transfer endpoint to accept sender credentials
+- Improved error handling and validation
+- Added key pair validation
 
 ### Version 1.0.0 (Initial Release)
 - Implemented SOL transfer endpoint
