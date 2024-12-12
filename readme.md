@@ -10,7 +10,7 @@ https://web3-agent.onrender.com
 - Automated SOL transfers (0.001 SOL per successful challenge)
 - Fresh wallet generation endpoint
 - Environment-based wallet configuration
-- Balance checking functionality
+- Balance checking functionality for wallets and token mints
 - Secure transaction handling
 - Comprehensive error handling and logging
 
@@ -60,9 +60,15 @@ https://web3-agent.onrender.com
    The server will be running at `http://localhost:3000` with the following endpoints:
    - POST `/create-wallet`: Generates a new Solana wallet
    - POST `/trigger`: Sends SOL to a specified address
+   - POST `/check-balance`: Checks SOL balance of a wallet
+   - POST `/check-mint-balance`: Checks supply and balance of a token mint
 
 ## Testing with Postman
-Import the provided `postman_collection.json` to test the API endpoints.
+Import the provided `postman_collection.json` to test the API endpoints:
+- POST `/create-wallet`: Generates a new Solana wallet
+- POST `/trigger`: Sends SOL to a specified address
+- POST `/check-balance`: Checks SOL balance of a wallet
+- POST `/check-mint-balance`: Checks supply and balance of a token mint
 
 ## Environment Variables
 Create a `.env` file in the root directory with the following variables:

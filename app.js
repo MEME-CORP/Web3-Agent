@@ -19,6 +19,23 @@ async function checkWalletBalance(publicKeyStr) {
     }
 }
 
+// Function to check mint balance
+async function checkMintBalance(mintAddress) {
+    try {
+        const mintPublicKey = new solanaWeb3.PublicKey(mintAddress);
+        const info = await connection.getTokenSupply(mintPublicKey);
+        console.log(`Supply for mint ${mintAddress}: ${info.value.uiAmount}`);
+        return {
+            amount: info.value.uiAmount,
+            decimals: info.value.decimals,
+            rawAmount: info.value.amount
+        };
+    } catch (error) {
+        console.error('Error checking mint balance:', error.message);
+        throw error;
+    }
+}
+
 // Function to send SOL to a recipient address
 async function sendSol(fromPrivateKey, fromPublicKey, toAddress, amount) {
     try {
@@ -122,6 +139,52 @@ const server = http.createServer((req, res) => {
                             message: 'Balance retrieved successfully',
                             balance: balance / solanaWeb3.LAMPORTS_PER_SOL,
                             lamports: balance
+                        }));
+                    })
+                    .catch(error => {
+                        console.error(error);
+                        res.writeHead(500, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({
+                            status: 'error',
+                            message: error.message
+                        }));
+                    });
+            } catch (error) {
+                console.error(error);
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({
+                    status: 'error',
+                    message: 'Invalid request data'
+                }));
+            }
+        });
+    }
+    // Add new endpoint for mint balance checking
+    else if (req.method === 'POST' && req.url === '/check-mint-balance') {
+        let body = '';
+
+        req.on('data', chunk => {
+            body += chunk.toString();
+        });
+
+        req.on('end', () => {
+            try {
+                const data = JSON.parse(body);
+                const { mintAddress } = data;
+
+                if (!mintAddress) {
+                    throw new Error('Missing mint address parameter');
+                }
+
+                checkMintBalance(mintAddress)
+                    .then((balance) => {
+                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({
+                            status: 'success',
+                            message: 'Mint balance retrieved successfully',
+                            balance: balance.amount,
+                            decimals: balance.decimals,
+                            rawAmount: balance.rawAmount
                         }));
                     })
                     .catch(error => {

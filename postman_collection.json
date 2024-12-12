@@ -121,6 +121,45 @@
               "body": "{\n    \"status\": \"success\",\n    \"message\": \"Balance retrieved successfully\",\n    \"balance\": 1.5,\n    \"lamports\": 1500000000\n}"
             }
           ]
+        },
+        {
+          "name": "Check Mint Balance",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"mintAddress\": \"YOUR_MINT_ADDRESS\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/check-mint-balance",
+              "host": ["{{baseUrl}}"],
+              "path": ["check-mint-balance"]
+            },
+            "description": "Retrieves the current supply and balance information of a Solana token mint"
+          },
+          "response": [
+            {
+              "name": "Successful Mint Balance Check",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"mintAddress\": \"EXAMPLE_MINT_ADDRESS\"\n}"
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n    \"status\": \"success\",\n    \"message\": \"Mint balance retrieved successfully\",\n    \"balance\": 1000000.0,\n    \"decimals\": 9,\n    \"rawAmount\": \"1000000000000000\"\n}"
+            }
+          ]
         }
       ]
     }

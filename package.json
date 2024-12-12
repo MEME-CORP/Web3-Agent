@@ -1,4 +1,3 @@
-
 {
   "name": "solana-agent",
   "version": "1.0.0",
@@ -8,13 +7,16 @@
     "start": "node app.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": ["solana", "wallet", "agent"],
+  "keywords": [
+    "solana",
+    "wallet",
+    "agent"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@solana/spl-token": "^0.4.9",
     "@solana/web3.js": "^1.87.6",
     "bs58": "^5.0.0"
   }
-} 
-
-
+}

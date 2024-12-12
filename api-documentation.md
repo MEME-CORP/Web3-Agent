@@ -168,6 +168,57 @@ POST /check-balance
 | 400         | Invalid request data  | `{"status": "error", "message": "Invalid request data"}` |
 | 500         | Invalid public key    | `{"status": "error", "message": "Invalid public key"}` |
 
+### 4. Check Mint Balance
+
+Retrieves the current supply and balance information of a Solana token mint address.
+
+```http
+POST /check-mint-balance
+```
+
+#### Request
+
+##### Headers
+
+| Name          | Type   | Required | Description            |
+|---------------|--------|----------|------------------------|
+| Content-Type  | string | Yes      | application/json       |
+
+##### Body Parameters
+
+| Parameter   | Type   | Required | Description                    |
+|------------|--------|----------|--------------------------------|
+| mintAddress| string | Yes      | Address of the token mint      |
+
+##### Example Request
+
+```json
+{
+    "mintAddress": "YOUR_MINT_ADDRESS"
+}
+```
+
+#### Response
+
+##### Success Response (200 OK)
+
+```json
+{
+    "status": "success",
+    "message": "Mint balance retrieved successfully",
+    "balance": 1000000.0,
+    "decimals": 9,
+    "rawAmount": "1000000000000000"
+}
+```
+
+##### Error Responses
+
+| Status Code | Description           | Response Body                                    |
+|-------------|-----------------------|--------------------------------------------------|
+| 400         | Invalid request data  | `{"status": "error", "message": "Invalid request data"}` |
+| 500         | Invalid mint address  | `{"status": "error", "message": "Invalid mint address"}` |
+
 ## Rate Limiting
 
 Currently, there are no rate limits implemented. However, transactions are limited by:
@@ -248,6 +299,29 @@ const checkBalance = async (publicKey: string) => {
 };
 ```
 
+#### Check Mint Balance
+```typescript
+const checkMintBalance = async (mintAddress: string) => {
+  try {
+    const response = await fetch('https://web3-agent.onrender.com/check-mint-balance', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        mintAddress
+      }),
+    });
+    
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Error:', error);
+    throw error;
+  }
+};
+```
+
 ### cURL
 
 #### Generate Wallet
@@ -274,6 +348,15 @@ curl -X POST https://web3-agent.onrender.com/check-balance \
   -H "Content-Type: application/json" \
   -d '{
     "publicKey": "YOUR_PUBLIC_KEY"
+  }'
+```
+
+#### Check Mint Balance
+```bash
+curl -X POST https://web3-agent.onrender.com/check-mint-balance \
+  -H "Content-Type: application/json" \
+  -d '{
+    "mintAddress": "YOUR_MINT_ADDRESS"
   }'
 ```
 
