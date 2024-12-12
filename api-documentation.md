@@ -118,6 +118,56 @@ POST /trigger
 | 500        | Insufficient balance                             | `{"status": "error", "message": "Insufficient balance. Have X SOL, need Y SOL"}` |
 | 500        | Key mismatch                                     | `{"status": "error", "message": "Provided public key does not match the private key"}` |
 
+### 3. Check Wallet Balance
+
+Retrieves the current balance of a Solana wallet.
+
+```http
+POST /check-balance
+```
+
+#### Request
+
+##### Headers
+
+| Name          | Type   | Required | Description            |
+|---------------|--------|----------|------------------------|
+| Content-Type  | string | Yes      | application/json       |
+
+##### Body Parameters
+
+| Parameter  | Type   | Required | Description                    |
+|-----------|--------|----------|--------------------------------|
+| publicKey | string | Yes      | Public key of the wallet       |
+
+##### Example Request
+
+```json
+{
+    "publicKey": "YOUR_PUBLIC_KEY"
+}
+```
+
+#### Response
+
+##### Success Response (200 OK)
+
+```json
+{
+    "status": "success",
+    "message": "Balance retrieved successfully",
+    "balance": 1.5,
+    "lamports": 1500000000
+}
+```
+
+##### Error Responses
+
+| Status Code | Description           | Response Body                                    |
+|-------------|-----------------------|--------------------------------------------------|
+| 400         | Invalid request data  | `{"status": "error", "message": "Invalid request data"}` |
+| 500         | Invalid public key    | `{"status": "error", "message": "Invalid public key"}` |
+
 ## Rate Limiting
 
 Currently, there are no rate limits implemented. However, transactions are limited by:
@@ -175,6 +225,29 @@ const transferSOL = async (fromPrivateKey: string, fromPublicKey: string, toAddr
 };
 ```
 
+#### Check Balance
+```typescript
+const checkBalance = async (publicKey: string) => {
+  try {
+    const response = await fetch('https://web3-agent.onrender.com/check-balance', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        publicKey
+      }),
+    });
+    
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Error:', error);
+    throw error;
+  }
+};
+```
+
 ### cURL
 
 #### Generate Wallet
@@ -192,6 +265,15 @@ curl -X POST http://localhost:3000/trigger \
     "fromPublicKey": "YOUR_PUBLIC_KEY",
     "toAddress": "RECIPIENT_ADDRESS",
     "amount": 0.001
+  }'
+```
+
+#### Check Balance
+```bash
+curl -X POST https://web3-agent.onrender.com/check-balance \
+  -H "Content-Type: application/json" \
+  -d '{
+    "publicKey": "YOUR_PUBLIC_KEY"
   }'
 ```
 
@@ -220,6 +302,10 @@ A Postman collection is provided for testing both API endpoints. Import the prov
 - Implemented SOL transfer endpoint
 - Added basic error handling
 - Included transaction signature in successful responses
+
+### Version 1.2.0
+- Added wallet balance checking endpoint
+- Added balance information in lamports and SOL
 
 ## Support
 

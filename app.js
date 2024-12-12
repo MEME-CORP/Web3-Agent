@@ -97,8 +97,53 @@ async function generateWallet() {
 
 // Create an HTTP server to receive triggers
 const server = http.createServer((req, res) => {
+    // Add new endpoint for balance checking
+    if (req.method === 'POST' && req.url === '/check-balance') {
+        let body = '';
+
+        req.on('data', chunk => {
+            body += chunk.toString();
+        });
+
+        req.on('end', () => {
+            try {
+                const data = JSON.parse(body);
+                const { publicKey } = data;
+
+                if (!publicKey) {
+                    throw new Error('Missing public key parameter');
+                }
+
+                checkWalletBalance(publicKey)
+                    .then((balance) => {
+                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({
+                            status: 'success',
+                            message: 'Balance retrieved successfully',
+                            balance: balance / solanaWeb3.LAMPORTS_PER_SOL,
+                            lamports: balance
+                        }));
+                    })
+                    .catch(error => {
+                        console.error(error);
+                        res.writeHead(500, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({
+                            status: 'error',
+                            message: error.message
+                        }));
+                    });
+            } catch (error) {
+                console.error(error);
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({
+                    status: 'error',
+                    message: 'Invalid request data'
+                }));
+            }
+        });
+    }
     // Add new endpoint for wallet generation
-    if (req.method === 'POST' && req.url === '/generate-wallet') {
+    else if (req.method === 'POST' && req.url === '/generate-wallet') {
         generateWallet()
             .then((wallet) => {
                 res.writeHead(200, { 'Content-Type': 'application/json' });

@@ -82,6 +82,45 @@
               "body": "{\n    \"status\": \"success\",\n    \"message\": \"SOL sent successfully\",\n    \"signature\": \"2xGVGnwqSHAQEMdHvhXGBTxzz7YdKyUnpyF1LYK3kgGHjKZRqk9PFDBNmPTPAFXmJkHE3YzNHa4Pmj8TEpgHnWHk\",\n    \"amount\": 0.001\n}"
             }
           ]
+        },
+        {
+          "name": "Check Wallet Balance",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"publicKey\": \"YOUR_PUBLIC_KEY\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/check-balance",
+              "host": ["{{baseUrl}}"],
+              "path": ["check-balance"]
+            },
+            "description": "Retrieves the current balance of a Solana wallet"
+          },
+          "response": [
+            {
+              "name": "Successful Balance Check",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"publicKey\": \"EXAMPLE_PUBLIC_KEY\"\n}"
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n    \"status\": \"success\",\n    \"message\": \"Balance retrieved successfully\",\n    \"balance\": 1.5,\n    \"lamports\": 1500000000\n}"
+            }
+          ]
         }
       ]
     }
