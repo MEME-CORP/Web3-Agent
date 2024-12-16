@@ -120,7 +120,7 @@ POST /trigger
 
 ### 3. Check Wallet Balance
 
-Retrieves the current balance of a Solana wallet.
+Retrieves both SOL and token balances for a Solana wallet.
 
 ```http
 POST /check-balance
@@ -136,15 +136,17 @@ POST /check-balance
 
 ##### Body Parameters
 
-| Parameter  | Type   | Required | Description                    |
-|-----------|--------|----------|--------------------------------|
-| publicKey | string | Yes      | Public key of the wallet       |
+| Parameter   | Type   | Required | Description                           |
+|------------|--------|----------|---------------------------------------|
+| publicKey  | string | Yes      | Public key of the wallet              |
+| mintAddress| string | No       | Optional token mint address to check  |
 
 ##### Example Request
 
 ```json
 {
-    "publicKey": "YOUR_PUBLIC_KEY"
+    "publicKey": "YOUR_PUBLIC_KEY",
+    "mintAddress": "YOUR_MINT_ADDRESS"
 }
 ```
 
@@ -156,8 +158,16 @@ POST /check-balance
 {
     "status": "success",
     "message": "Balance retrieved successfully",
-    "balance": 1.5,
-    "lamports": 1500000000
+    "solBalance": {
+        "balance": 1.5,
+        "lamports": 1500000000
+    },
+    "tokenBalance": {
+        "mint": "EXAMPLE_MINT_ADDRESS",
+        "balance": 1000000.0,
+        "decimals": 9,
+        "rawAmount": "1000000000000000"
+    }
 }
 ```
 
@@ -167,6 +177,8 @@ POST /check-balance
 |-------------|-----------------------|--------------------------------------------------|
 | 400         | Invalid request data  | `{"status": "error", "message": "Invalid request data"}` |
 | 500         | Invalid public key    | `{"status": "error", "message": "Invalid public key"}` |
+
+Note: If a `mintAddress` is provided but there's an error retrieving the token balance, the response will still include the SOL balance but will contain an error message in the `tokenBalance` field.
 
 ### 4. Check Mint Balance
 

@@ -95,14 +95,14 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n    \"publicKey\": \"YOUR_PUBLIC_KEY\"\n}"
+              "raw": "{\n    \"publicKey\": \"YOUR_PUBLIC_KEY\",\n    \"mintAddress\": \"YOUR_MINT_ADDRESS\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/check-balance",
               "host": ["{{baseUrl}}"],
               "path": ["check-balance"]
             },
-            "description": "Retrieves the current balance of a Solana wallet"
+            "description": "Retrieves both SOL and token balances for a wallet"
           },
           "response": [
             {
@@ -112,13 +112,13 @@
                 "header": [],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n    \"publicKey\": \"EXAMPLE_PUBLIC_KEY\"\n}"
+                  "raw": "{\n    \"publicKey\": \"EXAMPLE_PUBLIC_KEY\",\n    \"mintAddress\": \"EXAMPLE_MINT_ADDRESS\"\n}"
                 }
               },
               "status": "OK",
               "code": 200,
               "_postman_previewlanguage": "json",
-              "body": "{\n    \"status\": \"success\",\n    \"message\": \"Balance retrieved successfully\",\n    \"balance\": 1.5,\n    \"lamports\": 1500000000\n}"
+              "body": "{\n    \"status\": \"success\",\n    \"message\": \"Balance retrieved successfully\",\n    \"solBalance\": {\n        \"balance\": 1.5,\n        \"lamports\": 1500000000\n    },\n    \"tokenBalance\": {\n        \"mint\": \"EXAMPLE_MINT_ADDRESS\",\n        \"balance\": 1000000.0,\n        \"decimals\": 9,\n        \"rawAmount\": \"1000000000000000\"\n    }\n}"
             }
           ]
         },
@@ -158,6 +158,45 @@
               "code": 200,
               "_postman_previewlanguage": "json",
               "body": "{\n    \"status\": \"success\",\n    \"message\": \"Mint balance retrieved successfully\",\n    \"balance\": 1000000.0,\n    \"decimals\": 9,\n    \"rawAmount\": \"1000000000000000\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Top Token Holders",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"mintAddress\": \"YOUR_MINT_ADDRESS\",\n    \"limit\": 10\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/get-top-holders",
+              "host": ["{{baseUrl}}"],
+              "path": ["get-top-holders"]
+            },
+            "description": "Retrieves the top token holders for a given mint address"
+          },
+          "response": [
+            {
+              "name": "Successful Top Holders Retrieval",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"mintAddress\": \"EXAMPLE_MINT_ADDRESS\",\n    \"limit\": 10\n}"
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n    \"status\": \"success\",\n    \"message\": \"Top holders retrieved successfully\",\n    \"holders\": [\n        {\n            \"owner\": \"WALLET_ADDRESS_1\",\n            \"amount\": \"1000000000\",\n            \"address\": \"TOKEN_ACCOUNT_ADDRESS_1\"\n        },\n        {\n            \"owner\": \"WALLET_ADDRESS_2\",\n            \"amount\": \"500000000\",\n            \"address\": \"TOKEN_ACCOUNT_ADDRESS_2\"\n        }\n    ]\n}"
             }
           ]
         }
@@ -205,6 +244,12 @@
       "value": "",
       "type": "string",
       "description": "The Solana address to receive the SOL transfer"
+    },
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3001",
+      "type": "string",
+      "description": "Local development server URL"
     }
   ]
 } 

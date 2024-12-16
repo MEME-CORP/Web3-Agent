@@ -55,13 +55,19 @@ https://web3-agent.onrender.com
    ```bash
    node app.js
    ```
+   The server will be running at `http://localhost:3001`
 
 5. **Test the endpoints**
-   The server will be running at `http://localhost:3000` with the following endpoints:
+   Use the following base URL for local testing:
+   - Local: `http://localhost:3001`
+   - Production: `https://web3-agent.onrender.com`
+
+   Available endpoints:
+   - POST `/check-balance`: Checks SOL and token balances
    - POST `/create-wallet`: Generates a new Solana wallet
    - POST `/trigger`: Sends SOL to a specified address
-   - POST `/check-balance`: Checks SOL balance of a wallet
    - POST `/check-mint-balance`: Checks supply and balance of a token mint
+   - POST `/get-top-holders`: Gets top token holders for a mint address
 
 ## Testing with Postman
 Import the provided `postman_collection.json` to test the API endpoints:
@@ -69,6 +75,7 @@ Import the provided `postman_collection.json` to test the API endpoints:
 - POST `/trigger`: Sends SOL to a specified address
 - POST `/check-balance`: Checks SOL balance of a wallet
 - POST `/check-mint-balance`: Checks supply and balance of a token mint
+- POST `/get-top-holders`: Gets top token holders for a mint address
 
 ## Environment Variables
 Create a `.env` file in the root directory with the following variables:
