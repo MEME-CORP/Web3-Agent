@@ -47,28 +47,48 @@ async function checkMintBalance(mintAddress) {
 // Helper function to delay between requests
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Function to get top token holders with batch processing
+// Add these improved helper functions near the top of the file
+const retryWithBackoff = async (fn, retries = 3, delay = 1000) => {
+    for (let i = 0; i < retries; i++) {
+        try {
+            return await fn();
+        } catch (error) {
+            if (i === retries - 1) throw error;
+            await sleep(delay * Math.pow(2, i));
+        }
+    }
+};
+
+// Enhanced getTopHolders function with better error handling and retry logic
 async function getTopHolders(mintAddress, limit = 10) {
     try {
         const mintPublicKey = new solanaWeb3.PublicKey(mintAddress);
-        const accounts = await connection.getProgramAccounts(
-            new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'),
-            {
-                commitment: 'confirmed',
-                filters: [
-                    {
-                        dataSize: 165,
-                    },
-                    {
-                        memcmp: {
-                            offset: 0,
-                            bytes: mintPublicKey.toBase58(),
+        
+        // Validate mint account exists
+        const mintInfo = await connection.getAccountInfo(mintPublicKey);
+        if (!mintInfo) {
+            throw new Error('Invalid mint address: Account not found');
+        }
+
+        // Enhanced filters for token accounts
+        const accounts = await retryWithBackoff(async () => {
+            return await connection.getProgramAccounts(
+                new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'),
+                {
+                    commitment: 'confirmed',
+                    filters: [
+                        { dataSize: 165 },
+                        {
+                            memcmp: {
+                                offset: 0,
+                                bytes: mintPublicKey.toBase58(),
+                            },
                         },
-                    },
-                ],
-                encoding: 'base64',
-            }
-        );
+                    ],
+                    encoding: 'base64',
+                }
+            );
+        });
 
         // Process accounts in batches to manage memory
         const BATCH_SIZE = 50; // Reduced batch size
