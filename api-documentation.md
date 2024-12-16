@@ -292,6 +292,74 @@ POST /burn-tokens
 | 400         | Invalid request data  | `{"status": "error", "message": "Invalid request data"}` |
 | 500         | Burn failed          | `{"status": "error", "message": "Error message details"}` |
 
+### 6. Check Transfer History
+
+Retrieves the history of SOL transfers between two specific wallets within a time range.
+
+```http
+POST /check-transfers
+```
+
+#### Request
+
+##### Headers
+
+| Name          | Type   | Required | Description            |
+|---------------|--------|----------|------------------------|
+| Content-Type  | string | Yes      | application/json       |
+
+##### Body Parameters
+
+| Parameter   | Type   | Required | Description                           |
+|------------|--------|----------|---------------------------------------|
+| fromAddress | string | Yes      | Public key of the sender wallet       |
+| toAddress   | string | Yes      | Public key of the recipient wallet    |
+| beforeTime  | number | No       | Unix timestamp of the start time      |
+| afterTime   | number | No       | Unix timestamp of the end time        |
+
+##### Example Request
+
+```json
+{
+    "fromAddress": "YOUR_PUBLIC_KEY",
+    "toAddress": "RECIPIENT_PUBLIC_KEY",
+    "beforeTime": 1633072800,
+    "afterTime": 1633072800
+}
+```
+
+#### Response
+
+##### Success Response (200 OK)
+
+```json
+{
+    "status": "success",
+    "message": "Transfer history retrieved successfully",
+    "transfers": [
+        {
+            "signature": "2xGVGnwqSHAQEMdHvhXGBTxzz7YdKyUnpyF1LYK3kgGHjKZRqk9PFDBNmPTPAFXmJkHE3YzNHa4Pmj8TEpgHnWHk",
+            "timestamp": "2021-10-01T12:00:00.000Z",
+            "amount": 0.001,
+            "fee": 0.00001
+        },
+        {
+            "signature": "2xGVGnwqSHAQEMdHvhXGBTxzz7YdKyUnpyF1LYK3kgGHjKZRqk9PFDBNmPTPAFXmJkHE3YzNHa4Pmj8TEpgHnWHk",
+            "timestamp": "2021-10-01T12:00:00.000Z",
+            "amount": 0.001,
+            "fee": 0.00001
+        }
+    ]
+}
+```
+
+##### Error Responses
+
+| Status Code | Description           | Response Body                                    |
+|-------------|-----------------------|--------------------------------------------------|
+| 400         | Invalid request data  | `{"status": "error", "message": "Invalid request data"}` |
+| 500         | Invalid public key    | `{"status": "error", "message": "Invalid public key"}` |
+
 ## Rate Limiting
 
 Currently, there are no rate limits implemented. However, transactions are limited by:

@@ -253,6 +253,45 @@
           "body": "{\n    \"status\": \"success\",\n    \"message\": \"Tokens burned successfully\",\n    \"signature\": \"2xGVGnwqSHAQEMdHvhXGBTxzz7YdKyUnpyF1LYK3kgGHjKZRqk9PFDBNmPTPAFXmJkHE3YzNHa4Pmj8TEpgHnWHk\",\n    \"amount\": 100,\n    \"token\": \"TOKEN_MINT_ADDRESS\"\n}"
         }
       ]
+    },
+    {
+      "name": "Check Transfer History",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"fromAddress\": \"SOURCE_WALLET_ADDRESS\",\n    \"toAddress\": \"DESTINATION_WALLET_ADDRESS\",\n    \"beforeTime\": \"2024-03-20T00:00:00Z\",\n    \"afterTime\": \"2024-03-19T00:00:00Z\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/check-transfers",
+          "host": ["{{baseUrl}}"],
+          "path": ["check-transfers"]
+        },
+        "description": "Retrieves the history of SOL transfers between two specific wallets within a time range"
+      },
+      "response": [
+        {
+          "name": "Successful Transfer History Check",
+          "originalRequest": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"fromAddress\": \"SOURCE_WALLET_ADDRESS\",\n    \"toAddress\": \"DESTINATION_WALLET_ADDRESS\",\n    \"beforeTime\": \"2024-03-20T00:00:00Z\",\n    \"afterTime\": \"2024-03-19T00:00:00Z\"\n}"
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n    \"status\": \"success\",\n    \"message\": \"Transfer history retrieved successfully\",\n    \"transfers\": [\n        {\n            \"signature\": \"TRANSACTION_SIGNATURE\",\n            \"timestamp\": \"2024-03-19T12:34:56Z\",\n            \"amount\": 1000000000,\n            \"fee\": 5000\n        }\n    ]\n}"
+        }
+      ]
     }
   ],
   "event": [

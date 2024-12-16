@@ -275,6 +275,80 @@ async function transferToken(fromPrivateKey, fromPublicKey, toAddress, mintAddre
     }
 }
 
+// Add this new function near the other helper functions
+async function getTransferHistory(fromAddress, toAddress, beforeTime, afterTime) {
+    try {
+        // Convert addresses to PublicKeys
+        const fromPubKey = new solanaWeb3.PublicKey(fromAddress);
+        const toPubKey = new solanaWeb3.PublicKey(toAddress);
+
+        // Get signatures for the address within the time range
+        const signatures = await connection.getSignaturesForAddress(
+            fromPubKey,
+            {
+                before: beforeTime,
+                after: afterTime,
+            }
+        );
+
+        // Process transactions in batches to avoid rate limits
+        const BATCH_SIZE = 10;
+        let transfers = [];
+
+        for (let i = 0; i < signatures.length; i += BATCH_SIZE) {
+            const batch = signatures.slice(i, i + BATCH_SIZE);
+            const batchPromises = batch.map(async (sig) => {
+                try {
+                    const tx = await connection.getTransaction(sig.signature, {
+                        maxSupportedTransactionVersion: 0
+                    });
+
+                    if (!tx || !tx.meta || tx.meta.err) return null;
+
+                    // Check if this is a SOL transfer to the target address
+                    const relevantTransfer = tx.transaction.message.instructions.find(instruction => {
+                        const programId = tx.transaction.message.accountKeys[instruction.programId].toString();
+                        const accounts = instruction.accounts.map(acc => 
+                            tx.transaction.message.accountKeys[acc].toString()
+                        );
+                        
+                        return (
+                            programId === solanaWeb3.SystemProgram.programId.toString() &&
+                            accounts.includes(fromPubKey.toString()) &&
+                            accounts.includes(toPubKey.toString())
+                        );
+                    });
+
+                    if (!relevantTransfer) return null;
+
+                    return {
+                        signature: sig.signature,
+                        timestamp: sig.blockTime ? new Date(sig.blockTime * 1000).toISOString() : null,
+                        amount: tx.meta.postBalances[0] - tx.meta.preBalances[0],
+                        fee: tx.meta.fee
+                    };
+                } catch (error) {
+                    console.warn(`Error processing transaction ${sig.signature}:`, error.message);
+                    return null;
+                }
+            });
+
+            const batchResults = await Promise.all(batchPromises);
+            transfers.push(...batchResults.filter(t => t !== null));
+            
+            // Add delay between batches
+            if (i + BATCH_SIZE < signatures.length) {
+                await sleep(100);
+            }
+        }
+
+        return transfers;
+    } catch (error) {
+        console.error('Error getting transfer history:', error);
+        throw error;
+    }
+}
+
 // Create an HTTP server to receive triggers
 const server = http.createServer((req, res) => {
     // Add new endpoint for balance checking
@@ -551,6 +625,46 @@ const server = http.createServer((req, res) => {
                     signature: signature,
                     amount: amount,
                     token: mintAddress
+                }));
+            } catch (error) {
+                console.error(error);
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({
+                    status: 'error',
+                    message: error.message
+                }));
+            }
+        });
+    }
+    // Add this new endpoint handler in the server creation section
+    else if (req.method === 'POST' && req.url === '/check-transfers') {
+        let body = '';
+
+        req.on('data', chunk => {
+            body += chunk.toString();
+        });
+
+        req.on('end', async () => {
+            try {
+                const data = JSON.parse(body);
+                const { fromAddress, toAddress, beforeTime, afterTime } = data;
+
+                if (!fromAddress || !toAddress) {
+                    throw new Error('Missing required parameters: fromAddress and toAddress');
+                }
+
+                const transfers = await getTransferHistory(
+                    fromAddress,
+                    toAddress,
+                    beforeTime ? new Date(beforeTime).getTime() : undefined,
+                    afterTime ? new Date(afterTime).getTime() : undefined
+                );
+
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({
+                    status: 'success',
+                    message: 'Transfer history retrieved successfully',
+                    transfers: transfers
                 }));
             } catch (error) {
                 console.error(error);
