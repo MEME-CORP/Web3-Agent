@@ -56,9 +56,9 @@ POST /generate-wallet
 }
 ```
 
-### 2. Transfer SOL
+### 2. Transfer SOL/Token
 
-Triggers a transfer of SOL tokens from one wallet to another.
+Triggers a transfer of SOL or token from one wallet to another.
 
 ```http
 POST /trigger
@@ -82,6 +82,7 @@ POST /trigger
 | amount            | number  | Yes      | Amount of SOL to transfer                       |
 | username          | string  | No       | Username of the recipient (optional)            |
 | challengeCompleted| boolean | No       | Flag indicating challenge completion (optional)  |
+| mintAddress       | string  | No       | Optional token mint address to transfer         |
 
 ##### Example Request
 
@@ -92,7 +93,8 @@ POST /trigger
     "fromPrivateKey": "YOUR_PRIVATE_KEY",
     "fromPublicKey": "YOUR_PUBLIC_KEY",
     "toAddress": "RECIPIENT_SOLANA_ADDRESS",
-    "amount": 0.001
+    "amount": 0.001,
+    "mintAddress": "YOUR_MINT_ADDRESS"
 }
 ```
 

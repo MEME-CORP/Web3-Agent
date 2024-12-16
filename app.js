@@ -205,6 +205,52 @@ async function generateWallet() {
     }
 }
 
+// Add new function for token transfer
+async function transferToken(fromPrivateKey, fromPublicKey, toAddress, mintAddress, amount) {
+    try {
+        const fromKeypair = solanaWeb3.Keypair.fromSecretKey(bs58.decode(fromPrivateKey));
+        const toPublicKey = new solanaWeb3.PublicKey(toAddress);
+        const mintPublicKey = new solanaWeb3.PublicKey(mintAddress);
+
+        // Create associated token accounts if they don't exist
+        const fromATA = await getOrCreateAssociatedTokenAccount(
+            connection,
+            fromKeypair,
+            mintPublicKey,
+            fromKeypair.publicKey
+        );
+
+        const toATA = await getOrCreateAssociatedTokenAccount(
+            connection,
+            fromKeypair,
+            mintPublicKey,
+            toPublicKey
+        );
+
+        // Create transfer instruction
+        const transferInstruction = createTransferInstruction(
+            fromATA.address,
+            toATA.address,
+            fromKeypair.publicKey,
+            amount * (10 ** decimals)
+        );
+
+        const transaction = new solanaWeb3.Transaction().add(transferInstruction);
+        
+        // Send and confirm transaction
+        const signature = await solanaWeb3.sendAndConfirmTransaction(
+            connection,
+            transaction,
+            [fromKeypair]
+        );
+
+        return signature;
+    } catch (error) {
+        console.error('Error transferring token:', error);
+        throw error;
+    }
+}
+
 // Create an HTTP server to receive triggers
 const server = http.createServer((req, res) => {
     // Add new endpoint for balance checking
@@ -336,7 +382,7 @@ const server = http.createServer((req, res) => {
                 }));
             });
     }
-    // Existing transfer endpoint
+    // Modify the transfer endpoint handler
     else if (req.method === 'POST' && req.url === '/trigger') {
         let body = '';
 
@@ -344,39 +390,38 @@ const server = http.createServer((req, res) => {
             body += chunk.toString();
         });
 
-        req.on('end', () => {
+        req.on('end', async () => {
             try {
                 const data = JSON.parse(body);
-                const { fromPrivateKey, fromPublicKey, toAddress, amount } = data;
+                const { fromPrivateKey, fromPublicKey, toAddress, amount, mintAddress } = data;
 
                 if (!fromPrivateKey || !fromPublicKey || !toAddress || !amount) {
                     throw new Error('Missing required parameters');
                 }
 
-                sendSol(fromPrivateKey, fromPublicKey, toAddress, amount)
-                    .then((signature) => {
-                        res.writeHead(200, { 'Content-Type': 'application/json' });
-                        res.end(JSON.stringify({
-                            status: 'success',
-                            message: 'SOL sent successfully',
-                            signature: signature,
-                            amount: amount
-                        }));
-                    })
-                    .catch(error => {
-                        console.error(error);
-                        res.writeHead(500, { 'Content-Type': 'application/json' });
-                        res.end(JSON.stringify({
-                            status: 'error',
-                            message: error.message
-                        }));
-                    });
+                let signature;
+                if (mintAddress) {
+                    // Token transfer
+                    signature = await transferToken(fromPrivateKey, fromPublicKey, toAddress, mintAddress, amount);
+                } else {
+                    // SOL transfer
+                    signature = await sendSol(fromPrivateKey, fromPublicKey, toAddress, amount);
+                }
+
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({
+                    status: 'success',
+                    message: mintAddress ? 'Token sent successfully' : 'SOL sent successfully',
+                    signature: signature,
+                    amount: amount,
+                    token: mintAddress || null
+                }));
             } catch (error) {
                 console.error(error);
                 res.writeHead(400, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({
                     status: 'error',
-                    message: 'Invalid request data'
+                    message: error.message
                 }));
             }
         });

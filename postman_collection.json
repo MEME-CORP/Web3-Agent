@@ -43,7 +43,7 @@
           ]
         },
         {
-          "name": "Trigger SOL Transfer",
+          "name": "Trigger Transfer",
           "request": {
             "method": "POST",
             "header": [
@@ -54,32 +54,45 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n    \"username\": \"testUser\",\n    \"challengeCompleted\": true,\n    \"fromPrivateKey\": \"YOUR_PRIVATE_KEY\",\n    \"fromPublicKey\": \"YOUR_PUBLIC_KEY\",\n    \"toAddress\": \"{{recipient_address}}\",\n    \"amount\": 0.001\n}"
+              "raw": "{\n    \"fromPrivateKey\": \"YOUR_PRIVATE_KEY\",\n    \"fromPublicKey\": \"YOUR_PUBLIC_KEY\",\n    \"toAddress\": \"{{recipient_address}}\",\n    \"amount\": 0.001,\n    \"mintAddress\": \"TOKEN_MINT_ADDRESS\"\n}"
             },
             "url": {
-              "raw": "http://localhost:3000/trigger",
-              "protocol": "http",
-              "host": ["localhost"],
-              "port": "3000",
+              "raw": "{{baseUrl}}/trigger",
+              "host": ["{{baseUrl}}"],
               "path": ["trigger"]
             },
-            "description": "Triggers a SOL transfer using provided wallet credentials"
+            "description": "Triggers a SOL or token transfer using provided wallet credentials"
           },
           "response": [
             {
-              "name": "Successful Transfer",
+              "name": "Successful SOL Transfer",
               "originalRequest": {
                 "method": "POST",
                 "header": [],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n    \"username\": \"testUser\",\n    \"challengeCompleted\": true,\n    \"fromPrivateKey\": \"PRIVATE_KEY\",\n    \"fromPublicKey\": \"PUBLIC_KEY\",\n    \"toAddress\": \"{{recipient_address}}\",\n    \"amount\": 0.001\n}"
+                  "raw": "{\n    \"fromPrivateKey\": \"PRIVATE_KEY\",\n    \"fromPublicKey\": \"PUBLIC_KEY\",\n    \"toAddress\": \"{{recipient_address}}\",\n    \"amount\": 0.001\n}"
                 }
               },
               "status": "OK",
               "code": 200,
               "_postman_previewlanguage": "json",
-              "body": "{\n    \"status\": \"success\",\n    \"message\": \"SOL sent successfully\",\n    \"signature\": \"2xGVGnwqSHAQEMdHvhXGBTxzz7YdKyUnpyF1LYK3kgGHjKZRqk9PFDBNmPTPAFXmJkHE3YzNHa4Pmj8TEpgHnWHk\",\n    \"amount\": 0.001\n}"
+              "body": "{\n    \"status\": \"success\",\n    \"message\": \"SOL sent successfully\",\n    \"signature\": \"2xGVGnwqSHAQEMdHvhXGBTxzz7YdKyUnpyF1LYK3kgGHjKZRqk9PFDBNmPTPAFXmJkHE3YzNHa4Pmj8TEpgHnWHk\",\n    \"amount\": 0.001,\n    \"token\": null\n}"
+            },
+            {
+              "name": "Successful Token Transfer",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"fromPrivateKey\": \"PRIVATE_KEY\",\n    \"fromPublicKey\": \"PUBLIC_KEY\",\n    \"toAddress\": \"{{recipient_address}}\",\n    \"amount\": 100,\n    \"mintAddress\": \"TOKEN_MINT_ADDRESS\"\n}"
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "body": "{\n    \"status\": \"success\",\n    \"message\": \"Token sent successfully\",\n    \"signature\": \"2xGVGnwqSHAQEMdHvhXGBTxzz7YdKyUnpyF1LYK3kgGHjKZRqk9PFDBNmPTPAFXmJkHE3YzNHa4Pmj8TEpgHnWHk\",\n    \"amount\": 100,\n    \"token\": \"TOKEN_MINT_ADDRESS\"\n}"
             }
           ]
         },
