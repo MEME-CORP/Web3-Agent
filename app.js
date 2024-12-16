@@ -1,6 +1,10 @@
 const http = require('http');
 const solanaWeb3 = require('@solana/web3.js');
 const bs58 = require('bs58');
+const {
+    getOrCreateAssociatedTokenAccount,
+    createBurnInstruction
+} = require('@solana/spl-token');
 
 // Create a connection to the Solana cluster (using devnet)
 const NETWORK = 'devnet';
@@ -486,6 +490,74 @@ const server = http.createServer((req, res) => {
                 res.end(JSON.stringify({
                     status: 'error',
                     message: 'Invalid request data'
+                }));
+            }
+        });
+    }
+    // Add the burn tokens endpoint handler
+    else if (req.method === 'POST' && req.url === '/burn-tokens') {
+        let body = '';
+
+        req.on('data', chunk => {
+            body += chunk.toString();
+        });
+
+        req.on('end', async () => {
+            try {
+                const data = JSON.parse(body);
+                const { fromPrivateKey, fromPublicKey, mintAddress, amount, decimals } = data;
+
+                if (!fromPrivateKey || !fromPublicKey || !mintAddress || amount === undefined || decimals === undefined) {
+                    throw new Error('Missing required parameters');
+                }
+
+                const secretKey = bs58.decode(fromPrivateKey);
+                const fromKeypair = solanaWeb3.Keypair.fromSecretKey(secretKey);
+
+                if (fromKeypair.publicKey.toBase58() !== fromPublicKey) {
+                    throw new Error('Provided public key does not match the private key');
+                }
+
+                const mintPublicKey = new solanaWeb3.PublicKey(mintAddress);
+
+                // Get or create associated token account
+                const fromATA = await getOrCreateAssociatedTokenAccount(
+                    connection,
+                    fromKeypair,
+                    mintPublicKey,
+                    fromKeypair.publicKey
+                );
+
+                // Create burn instruction
+                const burnInstruction = createBurnInstruction(
+                    fromATA.address,
+                    mintPublicKey,
+                    fromKeypair.publicKey,
+                    amount * (10 ** decimals)
+                );
+
+                const transaction = new solanaWeb3.Transaction().add(burnInstruction);
+
+                const signature = await solanaWeb3.sendAndConfirmTransaction(
+                    connection,
+                    transaction,
+                    [fromKeypair]
+                );
+
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({
+                    status: 'success',
+                    message: 'Tokens burned successfully',
+                    signature: signature,
+                    amount: amount,
+                    token: mintAddress
+                }));
+            } catch (error) {
+                console.error(error);
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({
+                    status: 'error',
+                    message: error.message
                 }));
             }
         });

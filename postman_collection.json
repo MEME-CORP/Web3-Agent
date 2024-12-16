@@ -214,6 +214,45 @@
           ]
         }
       ]
+    },
+    {
+      "name": "Burn Tokens",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"fromPrivateKey\": \"YOUR_PRIVATE_KEY\",\n    \"fromPublicKey\": \"YOUR_PUBLIC_KEY\",\n    \"mintAddress\": \"TOKEN_MINT_ADDRESS\",\n    \"amount\": 100,\n    \"decimals\": 9\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/burn-tokens",
+          "host": ["{{baseUrl}}"],
+          "path": ["burn-tokens"]
+        },
+        "description": "Burns tokens from a specified wallet"
+      },
+      "response": [
+        {
+          "name": "Successful Token Burn",
+          "originalRequest": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"fromPrivateKey\": \"PRIVATE_KEY\",\n    \"fromPublicKey\": \"PUBLIC_KEY\",\n    \"mintAddress\": \"TOKEN_MINT_ADDRESS\",\n    \"amount\": 100,\n    \"decimals\": 9\n}"
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n    \"status\": \"success\",\n    \"message\": \"Tokens burned successfully\",\n    \"signature\": \"2xGVGnwqSHAQEMdHvhXGBTxzz7YdKyUnpyF1LYK3kgGHjKZRqk9PFDBNmPTPAFXmJkHE3YzNHa4Pmj8TEpgHnWHk\",\n    \"amount\": 100,\n    \"token\": \"TOKEN_MINT_ADDRESS\"\n}"
+        }
+      ]
     }
   ],
   "event": [

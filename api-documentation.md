@@ -233,6 +233,65 @@ POST /check-mint-balance
 | 400         | Invalid request data  | `{"status": "error", "message": "Invalid request data"}` |
 | 500         | Invalid mint address  | `{"status": "error", "message": "Invalid mint address"}` |
 
+### 5. Burn Tokens
+
+Burns tokens from a specified wallet's associated token account.
+
+```http
+POST /burn-tokens
+```
+
+#### Request
+
+##### Headers
+
+| Name          | Type   | Required | Description            |
+|---------------|--------|----------|------------------------|
+| Content-Type  | string | Yes      | application/json       |
+
+##### Body Parameters
+
+| Parameter      | Type   | Required | Description                                     |
+|---------------|--------|----------|-------------------------------------------------|
+| fromPrivateKey| string | Yes      | Private key of the burning wallet               |
+| fromPublicKey | string | Yes      | Public key of the burning wallet                |
+| mintAddress   | string | Yes      | Token mint address                              |
+| amount        | number | Yes      | Amount of tokens to burn                        |
+| decimals      | number | Yes      | Number of decimals for the token                |
+
+##### Example Request
+
+```json
+{
+    "fromPrivateKey": "YOUR_PRIVATE_KEY",
+    "fromPublicKey": "YOUR_PUBLIC_KEY",
+    "mintAddress": "TOKEN_MINT_ADDRESS",
+    "amount": 100,
+    "decimals": 9
+}
+```
+
+#### Response
+
+##### Success Response (200 OK)
+
+```json
+{
+    "status": "success",
+    "message": "Tokens burned successfully",
+    "signature": "2xGVGnwqSHAQEMdHvhXGBTxzz7YdKyUnpyF1LYK3kgGHjKZRqk9PFDBNmPTPAFXmJkHE3YzNHa4Pmj8TEpgHnWHk",
+    "amount": 100,
+    "token": "TOKEN_MINT_ADDRESS"
+}
+```
+
+##### Error Responses
+
+| Status Code | Description           | Response Body                                    |
+|-------------|-----------------------|--------------------------------------------------|
+| 400         | Invalid request data  | `{"status": "error", "message": "Invalid request data"}` |
+| 500         | Burn failed          | `{"status": "error", "message": "Error message details"}` |
+
 ## Rate Limiting
 
 Currently, there are no rate limits implemented. However, transactions are limited by:
