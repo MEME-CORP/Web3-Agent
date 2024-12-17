@@ -349,6 +349,49 @@ async function getTransferHistory(fromAddress, toAddress, beforeTime, afterTime)
     }
 }
 
+// Add this new function near the other helper functions
+async function getHolderPercentage(mintAddress, holderAddress) {
+    try {
+        // Get total supply
+        const mintPublicKey = new solanaWeb3.PublicKey(mintAddress);
+        const holderPublicKey = new solanaWeb3.PublicKey(holderAddress);
+        
+        // Get mint info for total supply
+        const mintInfo = await connection.getTokenSupply(mintPublicKey);
+        const totalSupply = Number(mintInfo.value.amount);
+        
+        if (totalSupply === 0) {
+            throw new Error('Token has no supply');
+        }
+
+        // Get holder's token account
+        const tokenAccounts = await connection.getTokenAccountsByOwner(
+            holderPublicKey,
+            { mint: mintPublicKey }
+        );
+
+        // Sum up all tokens held by this wallet
+        let holderBalance = 0;
+        for (const account of tokenAccounts.value) {
+            const accountInfo = await connection.getTokenAccountBalance(account.pubkey);
+            holderBalance += Number(accountInfo.value.amount);
+        }
+
+        // Calculate percentage
+        const percentage = (holderBalance / totalSupply) * 100;
+
+        return {
+            totalSupply,
+            holderBalance,
+            percentage: parseFloat(percentage.toFixed(4)),
+            decimals: mintInfo.value.decimals
+        };
+    } catch (error) {
+        console.error('Error getting holder percentage:', error);
+        throw error;
+    }
+}
+
 // Create an HTTP server to receive triggers
 const server = http.createServer((req, res) => {
     // Add new endpoint for balance checking
@@ -665,6 +708,41 @@ const server = http.createServer((req, res) => {
                     status: 'success',
                     message: 'Transfer history retrieved successfully',
                     transfers: transfers
+                }));
+            } catch (error) {
+                console.error(error);
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({
+                    status: 'error',
+                    message: error.message
+                }));
+            }
+        });
+    }
+    // Add this new endpoint handler in the server creation section
+    else if (req.method === 'POST' && req.url === '/holder-percentage') {
+        let body = '';
+
+        req.on('data', chunk => {
+            body += chunk.toString();
+        });
+
+        req.on('end', async () => {
+            try {
+                const data = JSON.parse(body);
+                const { mintAddress, holderAddress } = data;
+
+                if (!mintAddress || !holderAddress) {
+                    throw new Error('Missing required parameters: mintAddress and holderAddress');
+                }
+
+                const percentageInfo = await getHolderPercentage(mintAddress, holderAddress);
+
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({
+                    status: 'success',
+                    message: 'Holder percentage retrieved successfully',
+                    data: percentageInfo
                 }));
             } catch (error) {
                 console.error(error);

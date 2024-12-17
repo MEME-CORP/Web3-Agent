@@ -360,6 +360,63 @@ POST /check-transfers
 | 400         | Invalid request data  | `{"status": "error", "message": "Invalid request data"}` |
 | 500         | Invalid public key    | `{"status": "error", "message": "Invalid public key"}` |
 
+### 7. Check Holder Percentage
+
+Retrieves the percentage of total supply that a specific wallet holds for a given token.
+
+```http
+POST /holder-percentage
+```
+
+#### Request
+
+##### Headers
+
+| Name          | Type   | Required | Description            |
+|---------------|--------|----------|------------------------|
+| Content-Type  | string | Yes      | application/json       |
+
+##### Body Parameters
+
+| Parameter    | Type   | Required | Description                           |
+|-------------|--------|----------|---------------------------------------|
+| mintAddress | string | Yes      | Token mint address to check           |
+| holderAddress| string | Yes      | Wallet address to check percentage for|
+
+##### Example Request
+
+```json
+{
+    "mintAddress": "TOKEN_MINT_ADDRESS",
+    "holderAddress": "HOLDER_WALLET_ADDRESS"
+}
+```
+
+#### Response
+
+##### Success Response (200 OK)
+
+```json
+{
+    "status": "success",
+    "message": "Holder percentage retrieved successfully",
+    "data": {
+        "totalSupply": 1000000000000,
+        "holderBalance": 50000000000,
+        "percentage": 5.0000,
+        "decimals": 9
+    }
+}
+```
+
+##### Error Responses
+
+| Status Code | Description           | Response Body                                    |
+|-------------|-----------------------|--------------------------------------------------|
+| 400         | Invalid request data  | `{"status": "error", "message": "Invalid request data"}` |
+| 400         | Missing parameters    | `{"status": "error", "message": "Missing required parameters"}` |
+| 500         | Invalid addresses     | `{"status": "error", "message": "Invalid mint or holder address"}` |
+
 ## Rate Limiting
 
 Currently, there are no rate limits implemented. However, transactions are limited by:

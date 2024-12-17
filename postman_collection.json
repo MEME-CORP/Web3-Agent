@@ -292,6 +292,45 @@
           "body": "{\n    \"status\": \"success\",\n    \"message\": \"Transfer history retrieved successfully\",\n    \"transfers\": [\n        {\n            \"signature\": \"TRANSACTION_SIGNATURE\",\n            \"timestamp\": \"2024-03-19T12:34:56Z\",\n            \"amount\": 1000000000,\n            \"fee\": 5000\n        }\n    ]\n}"
         }
       ]
+    },
+    {
+      "name": "Check Holder Percentage",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"mintAddress\": \"TOKEN_MINT_ADDRESS\",\n    \"holderAddress\": \"HOLDER_WALLET_ADDRESS\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/holder-percentage",
+          "host": ["{{baseUrl}}"],
+          "path": ["holder-percentage"]
+        },
+        "description": "Retrieves the percentage of total supply that a specific wallet holds for a given token"
+      },
+      "response": [
+        {
+          "name": "Successful Holder Percentage Check",
+          "originalRequest": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"mintAddress\": \"TOKEN_MINT_ADDRESS\",\n    \"holderAddress\": \"HOLDER_WALLET_ADDRESS\"\n}"
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "body": "{\n    \"status\": \"success\",\n    \"message\": \"Holder percentage retrieved successfully\",\n    \"data\": {\n        \"totalSupply\": 1000000000000,\n        \"holderBalance\": 50000000000,\n        \"percentage\": 5.0000,\n        \"decimals\": 9\n    }\n}"
+        }
+      ]
     }
   ],
   "event": [
