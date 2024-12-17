@@ -1,3 +1,4 @@
+const fetch = require('node-fetch');
 const http = require('http');
 const solanaWeb3 = require('@solana/web3.js');
 const bs58 = require('bs58');
@@ -5,9 +6,10 @@ const {
     getOrCreateAssociatedTokenAccount,
     createBurnInstruction
 } = require('@solana/spl-token');
+const JupiterSwapTester = require('./swap');
 
-// Create a connection to the Solana cluster (using devnet)
-const NETWORK = 'devnet';
+// Modify the connection setup to support both networks
+const NETWORK = process.env.NETWORK || 'mainnet-beta'; // Change default to mainnet-beta
 const connection = new solanaWeb3.Connection(
     solanaWeb3.clusterApiUrl(NETWORK),
     {
@@ -17,6 +19,8 @@ const connection = new solanaWeb3.Connection(
         timeout: 30000
     }
 );
+
+// Add these constants after the existing connection setup
 
 // Function to check balance
 async function checkWalletBalance(publicKeyStr) {
@@ -276,80 +280,6 @@ async function transferToken(fromPrivateKey, fromPublicKey, toAddress, mintAddre
 }
 
 // Add this new function near the other helper functions
-async function getTransferHistory(fromAddress, toAddress, beforeTime, afterTime) {
-    try {
-        // Convert addresses to PublicKeys
-        const fromPubKey = new solanaWeb3.PublicKey(fromAddress);
-        const toPubKey = new solanaWeb3.PublicKey(toAddress);
-
-        // Get signatures for the address within the time range
-        const signatures = await connection.getSignaturesForAddress(
-            fromPubKey,
-            {
-                before: beforeTime,
-                after: afterTime,
-            }
-        );
-
-        // Process transactions in batches to avoid rate limits
-        const BATCH_SIZE = 10;
-        let transfers = [];
-
-        for (let i = 0; i < signatures.length; i += BATCH_SIZE) {
-            const batch = signatures.slice(i, i + BATCH_SIZE);
-            const batchPromises = batch.map(async (sig) => {
-                try {
-                    const tx = await connection.getTransaction(sig.signature, {
-                        maxSupportedTransactionVersion: 0
-                    });
-
-                    if (!tx || !tx.meta || tx.meta.err) return null;
-
-                    // Check if this is a SOL transfer to the target address
-                    const relevantTransfer = tx.transaction.message.instructions.find(instruction => {
-                        const programId = tx.transaction.message.accountKeys[instruction.programId].toString();
-                        const accounts = instruction.accounts.map(acc => 
-                            tx.transaction.message.accountKeys[acc].toString()
-                        );
-                        
-                        return (
-                            programId === solanaWeb3.SystemProgram.programId.toString() &&
-                            accounts.includes(fromPubKey.toString()) &&
-                            accounts.includes(toPubKey.toString())
-                        );
-                    });
-
-                    if (!relevantTransfer) return null;
-
-                    return {
-                        signature: sig.signature,
-                        timestamp: sig.blockTime ? new Date(sig.blockTime * 1000).toISOString() : null,
-                        amount: tx.meta.postBalances[0] - tx.meta.preBalances[0],
-                        fee: tx.meta.fee
-                    };
-                } catch (error) {
-                    console.warn(`Error processing transaction ${sig.signature}:`, error.message);
-                    return null;
-                }
-            });
-
-            const batchResults = await Promise.all(batchPromises);
-            transfers.push(...batchResults.filter(t => t !== null));
-            
-            // Add delay between batches
-            if (i + BATCH_SIZE < signatures.length) {
-                await sleep(100);
-            }
-        }
-
-        return transfers;
-    } catch (error) {
-        console.error('Error getting transfer history:', error);
-        throw error;
-    }
-}
-
-// Add this new function near the other helper functions
 async function getHolderPercentage(mintAddress, holderAddress) {
     try {
         // Get total supply
@@ -388,6 +318,98 @@ async function getHolderPercentage(mintAddress, holderAddress) {
         };
     } catch (error) {
         console.error('Error getting holder percentage:', error);
+        throw error;
+    }
+}
+
+// Update the getTokenPrice function with better error handling and market lookup
+async function getTokenPrice(mintAddress) {
+    try {
+        // Use Jupiter's v2 price API
+        const response = await fetch(`https://api.jup.ag/price/v2?ids=${mintAddress}&showExtraInfo=true`);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        // Check if we got price data for the requested token
+        if (!data.data || !data.data[mintAddress]) {
+            throw new Error('No price data available for this token');
+        }
+
+        const tokenData = data.data[mintAddress];
+        
+        return {
+            price: parseFloat(tokenData.price),
+            type: tokenData.type,
+            extraInfo: tokenData.extraInfo ? {
+                lastTraded: {
+                    sellPrice: tokenData.extraInfo.lastSwappedPrice?.lastJupiterSellPrice,
+                    sellTime: tokenData.extraInfo.lastSwappedPrice?.lastJupiterSellAt,
+                    buyPrice: tokenData.extraInfo.lastSwappedPrice?.lastJupiterBuyPrice,
+                    buyTime: tokenData.extraInfo.lastSwappedPrice?.lastJupiterBuyAt
+                },
+                quotedPrice: tokenData.extraInfo.quotedPrice,
+                confidenceLevel: tokenData.extraInfo.confidenceLevel
+            } : null,
+            lastUpdated: new Date().toISOString(),
+            network: NETWORK
+        };
+    } catch (error) {
+        console.error('Error getting token price:', error);
+        throw new Error(`Failed to get token price: ${error.message}`);
+    }
+}
+
+// Add this new function near the other helper functions
+async function getTransactionHistory(wallet1, wallet2, limit = 10) {
+    try {
+        const pubKey1 = new solanaWeb3.PublicKey(wallet1);
+        const pubKey2 = new solanaWeb3.PublicKey(wallet2);
+        
+        // Get signatures for both wallets
+        const signatures = await connection.getSignaturesForAddress(
+            pubKey1,
+            { limit: 100 },
+            'confirmed'
+        );
+
+        const transactions = [];
+        for (const signatureInfo of signatures) {
+            try {
+                const tx = await connection.getTransaction(signatureInfo.signature, {
+                    maxSupportedTransactionVersion: 0
+                });
+
+                if (!tx) continue;
+
+                // Check if the transaction involves both wallets
+                const involvesBothWallets = tx.transaction.message.accountKeys.some(key => 
+                    key.equals(pubKey2)
+                );
+
+                if (involvesBothWallets) {
+                    transactions.push({
+                        signature: signatureInfo.signature,
+                        timestamp: new Date(tx.blockTime * 1000).toISOString(),
+                        amount: tx.meta?.postBalances[0] - tx.meta?.preBalances[0],
+                        sender: tx.transaction.message.accountKeys[0].toString(),
+                        receiver: tx.transaction.message.accountKeys[1].toString(),
+                        status: tx.meta?.err ? 'failed' : 'success'
+                    });
+
+                    if (transactions.length >= limit) break;
+                }
+            } catch (err) {
+                console.warn(`Error processing transaction: ${err.message}`);
+                continue;
+            }
+        }
+
+        return transactions;
+    } catch (error) {
+        console.error('Error getting transaction history:', error);
         throw error;
     }
 }
@@ -534,18 +556,39 @@ const server = http.createServer((req, res) => {
         req.on('end', async () => {
             try {
                 const data = JSON.parse(body);
-                const { fromPrivateKey, fromPublicKey, toAddress, amount, mintAddress } = data;
+                const { 
+                    fromPrivateKey, 
+                    fromPublicKey, 
+                    toAddress, 
+                    amount, 
+                    mintAddress,
+                    getHistory // New parameter
+                } = data;
 
+                // If getHistory is true, return transaction history
+                if (getHistory) {
+                    if (!fromPublicKey || !toAddress) {
+                        throw new Error('Missing wallet addresses for history');
+                    }
+
+                    const history = await getTransactionHistory(fromPublicKey, toAddress);
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    return res.end(JSON.stringify({
+                        status: 'success',
+                        message: 'Transaction history retrieved successfully',
+                        history: history
+                    }));
+                }
+
+                // Original transfer logic
                 if (!fromPrivateKey || !fromPublicKey || !toAddress || !amount) {
                     throw new Error('Missing required parameters');
                 }
 
                 let signature;
                 if (mintAddress) {
-                    // Token transfer
                     signature = await transferToken(fromPrivateKey, fromPublicKey, toAddress, mintAddress, amount);
                 } else {
-                    // SOL transfer
                     signature = await sendSol(fromPrivateKey, fromPublicKey, toAddress, amount);
                 }
 
@@ -680,46 +723,6 @@ const server = http.createServer((req, res) => {
         });
     }
     // Add this new endpoint handler in the server creation section
-    else if (req.method === 'POST' && req.url === '/check-transfers') {
-        let body = '';
-
-        req.on('data', chunk => {
-            body += chunk.toString();
-        });
-
-        req.on('end', async () => {
-            try {
-                const data = JSON.parse(body);
-                const { fromAddress, toAddress, beforeTime, afterTime } = data;
-
-                if (!fromAddress || !toAddress) {
-                    throw new Error('Missing required parameters: fromAddress and toAddress');
-                }
-
-                const transfers = await getTransferHistory(
-                    fromAddress,
-                    toAddress,
-                    beforeTime ? new Date(beforeTime).getTime() : undefined,
-                    afterTime ? new Date(afterTime).getTime() : undefined
-                );
-
-                res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({
-                    status: 'success',
-                    message: 'Transfer history retrieved successfully',
-                    transfers: transfers
-                }));
-            } catch (error) {
-                console.error(error);
-                res.writeHead(400, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({
-                    status: 'error',
-                    message: error.message
-                }));
-            }
-        });
-    }
-    // Add this new endpoint handler in the server creation section
     else if (req.method === 'POST' && req.url === '/holder-percentage') {
         let body = '';
 
@@ -753,13 +756,110 @@ const server = http.createServer((req, res) => {
                 }));
             }
         });
+    }
+    // Add this new endpoint handler in the server creation section
+    else if (req.method === 'POST' && req.url === '/get-token-price') {
+        let body = '';
+
+        req.on('data', chunk => {
+            body += chunk.toString();
+        });
+
+        req.on('end', async () => {
+            try {
+                const data = JSON.parse(body);
+                const { mintAddress } = data;
+
+                if (!mintAddress) {
+                    throw new Error('Missing mint address parameter');
+                }
+
+                const priceInfo = await getTokenPrice(mintAddress);
+                
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({
+                    status: 'success',
+                    message: 'Token price retrieved successfully',
+                    data: priceInfo
+                }));
+            } catch (error) {
+                console.error(error);
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({
+                    status: 'error',
+                    message: error.message
+                }));
+            }
+        });
+    }
+    // Add this new endpoint handler in the server creation section
+    else if (req.method === 'POST' && req.url === '/buy-tokens') {
+        let body = '';
+
+        req.on('data', chunk => {
+            body += chunk.toString();
+        });
+
+        req.on('end', async () => {
+            try {
+                const data = JSON.parse(body);
+                const { 
+                    privateKey,
+                    tokenAddress,
+                    amountUSD = 0.1  // Default to 0.1 USD if not specified
+                } = data;
+
+                if (!privateKey || !tokenAddress) {
+                    throw new Error('Missing required parameters: privateKey and tokenAddress');
+                }
+
+                // Create a temporary environment for the swap
+                const originalPrivateKey = process.env.PRIVATE_KEY;
+                process.env.PRIVATE_KEY = privateKey;
+
+                try {
+                    // Initialize Jupiter swap tester
+                    const jupiterSwap = new JupiterSwapTester();
+
+                    // Execute the swap
+                    const result = await jupiterSwap.testSwap(tokenAddress, amountUSD);
+
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({
+                        status: 'success',
+                        message: 'Token purchase completed successfully',
+                        data: {
+                            transactionId: result,
+                            tokenAddress: tokenAddress,
+                            amountUSD: amountUSD,
+                            explorerUrl: `https://solscan.io/tx/${result}`
+                        }
+                    }));
+                } finally {
+                    // Restore original environment
+                    if (originalPrivateKey) {
+                        process.env.PRIVATE_KEY = originalPrivateKey;
+                    } else {
+                        delete process.env.PRIVATE_KEY;
+                    }
+                }
+
+            } catch (error) {
+                console.error('Error buying tokens:', error);
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({
+                    status: 'error',
+                    message: error.message
+                }));
+            }
+        });
     } else {
         res.writeHead(404);
         res.end();
     }
 });
 
-const PORT = process.env.PORT || 3001;
+const PORT = 3001; // Force port 3001
 const HOST = '0.0.0.0';
 
 server.listen(PORT, HOST, () => {

@@ -1,0 +1,281 @@
+{
+    "info": {
+      "_postman_id": "7e9a1c2b-4f5d-4e3c-8a6d-9b2c3d4e5f8b",
+      "name": "Solana Wallet - All Operations",
+      "description": "Unified collection for wallet generation, transfers, token operations, and balance checks",
+      "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+      {
+        "name": "Wallet Management",
+        "item": [
+          {
+            "name": "Generate New Wallet",
+            "request": {
+              "method": "POST",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "url": {
+                "raw": "{{baseUrl}}/generate-wallet",
+                "host": [
+                  "{{baseUrl}}"
+                ],
+                "path": [
+                  "generate-wallet"
+                ]
+              },
+              "description": "Generates a new Solana wallet and returns the public and private keys"
+            },
+            "response": [
+              {
+                "name": "Successful Wallet Generation",
+                "originalRequest": {
+                  "method": "POST",
+                  "header": []
+                },
+                "status": "OK",
+                "code": 200,
+                "_postman_previewlanguage": "json",
+                "header": [],
+                "body": "{\n    \"status\": \"success\",\n    \"message\": \"Wallet generated successfully\",\n    \"wallet\": {\n        \"publicKey\": \"GENERATED_PUBLIC_KEY\",\n        \"privateKey\": \"GENERATED_PRIVATE_KEY\"\n    }\n}"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Transfer Operations",
+        "item": [
+          {
+            "name": "Transfer SOL/Token",
+            "request": {
+              "method": "POST",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": {
+                "mode": "raw",
+                "raw": "{\n    \"fromPrivateKey\": \"YOUR_PRIVATE_KEY\",\n    \"fromPublicKey\": \"YOUR_PUBLIC_KEY\",\n    \"toAddress\": \"{{recipient_address}}\",\n    \"amount\": 0.001,\n    \"mintAddress\": \"TOKEN_MINT_ADDRESS\"\n}"
+              },
+              "url": {
+                "raw": "{{baseUrl}}/trigger",
+                "host": [
+                  "{{baseUrl}}"
+                ],
+                "path": [
+                  "trigger"
+                ]
+              },
+              "description": "Triggers a SOL or token transfer using provided wallet credentials"
+            },
+            "response": [
+              {
+                "name": "Successful SOL Transfer",
+                "originalRequest": {
+                  "method": "POST",
+                  "header": [],
+                  "body": {
+                    "mode": "raw",
+                    "raw": "{\n    \"fromPrivateKey\": \"PRIVATE_KEY\",\n    \"fromPublicKey\": \"PUBLIC_KEY\",\n    \"toAddress\": \"{{recipient_address}}\",\n    \"amount\": 0.001\n}"
+                  }
+                },
+                "status": "OK",
+                "code": 200,
+                "_postman_previewlanguage": "json",
+                "header": [],
+                "body": "{\n    \"status\": \"success\",\n    \"message\": \"SOL sent successfully\",\n    \"signature\": \"2xGVGnwqSHAQEMdHvhXGBTxzz7YdKyUnpyF1LYK3kgGHjKZRqk9PFDBNmPTPAFXmJkHE3YzNHa4Pmj8TEpgHnWHk\",\n    \"amount\": 0.001,\n    \"token\": null\n}"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Token Operations",
+        "item": [
+          {
+            "name": "Check Mint Balance",
+            "request": {
+              "method": "POST",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": {
+                "mode": "raw",
+                "raw": "{\n    \"mintAddress\": \"YOUR_MINT_ADDRESS\"\n}"
+              },
+              "url": {
+                "raw": "{{baseUrl}}/check-mint-balance",
+                "host": [
+                  "{{baseUrl}}"
+                ],
+                "path": [
+                  "check-mint-balance"
+                ]
+              },
+              "description": "Retrieves the current supply and balance information of a Solana token mint"
+            },
+            "response": [
+              {
+                "name": "Successful Mint Balance Check",
+                "originalRequest": {
+                  "method": "POST",
+                  "header": [],
+                  "body": {
+                    "mode": "raw",
+                    "raw": "{\n    \"mintAddress\": \"EXAMPLE_MINT_ADDRESS\"\n}"
+                  }
+                },
+                "status": "OK",
+                "code": 200,
+                "_postman_previewlanguage": "json",
+                "header": [],
+                "body": "{\n    \"status\": \"success\",\n    \"message\": \"Mint balance retrieved successfully\",\n    \"balance\": 1000000.0,\n    \"decimals\": 9,\n    \"rawAmount\": \"1000000000000000\"\n}"
+              }
+            ]
+          },
+          {
+            "name": "Get Token Price",
+            "request": {
+              "method": "POST",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": {
+                "mode": "raw",
+                "raw": "{\n    \"mintAddress\": \"TOKEN_MINT_ADDRESS\"\n}"
+              },
+              "url": {
+                "raw": "{{baseUrl}}/get-token-price",
+                "host": [
+                  "{{baseUrl}}"
+                ],
+                "path": [
+                  "get-token-price"
+                ]
+              },
+              "description": "Retrieves the current market price of a token from Serum DEX"
+            },
+            "response": [
+              {
+                "name": "Successful Token Price Check",
+                "originalRequest": {
+                  "method": "POST",
+                  "header": [],
+                  "body": {
+                    "mode": "raw",
+                    "raw": "{\n    \"mintAddress\": \"TOKEN_MINT_ADDRESS\"\n}"
+                  }
+                },
+                "status": "OK",
+                "code": 200,
+                "_postman_previewlanguage": "json",
+                "header": [],
+                "body": "{\n    \"status\": \"success\",\n    \"message\": \"Token price retrieved successfully\",\n    \"data\": {\n        \"price\": 1.23,\n        \"value24h\": 1.25,\n        \"timestampMillis\": 1679318096000,\n        \"lastUpdated\": \"2024-03-20T12:34:56.789Z\",\n        \"network\": \"mainnet-beta\"\n    }\n}"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Balance Operations",
+        "item": [
+          {
+            "name": "Check Wallet Balance",
+            "request": {
+              "method": "POST",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": {
+                "mode": "raw",
+                "raw": "{\n    \"publicKey\": \"YOUR_PUBLIC_KEY\",\n    \"mintAddress\": \"YOUR_MINT_ADDRESS\"\n}"
+              },
+              "url": {
+                "raw": "{{baseUrl}}/check-balance",
+                "host": [
+                  "{{baseUrl}}"
+                ],
+                "path": [
+                  "check-balance"
+                ]
+              },
+              "description": "Retrieves both SOL and token balances for a wallet"
+            },
+            "response": [
+              {
+                "name": "Successful Balance Check",
+                "originalRequest": {
+                  "method": "POST",
+                  "header": [],
+                  "body": {
+                    "mode": "raw",
+                    "raw": "{\n    \"publicKey\": \"EXAMPLE_PUBLIC_KEY\",\n    \"mintAddress\": \"EXAMPLE_MINT_ADDRESS\"\n}"
+                  }
+                },
+                "status": "OK",
+                "code": 200,
+                "_postman_previewlanguage": "json",
+                "header": [],
+                "body": "{\n    \"status\": \"success\",\n    \"message\": \"Balance retrieved successfully\",\n    \"solBalance\": {\n        \"balance\": 1.5,\n        \"lamports\": 1500000000\n    },\n    \"tokenBalance\": {\n        \"mint\": \"EXAMPLE_MINT_ADDRESS\",\n        \"balance\": 1000000.0,\n        \"decimals\": 9,\n        \"rawAmount\": \"1000000000000000\"\n    }\n}"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "event": [
+      {
+        "listen": "prerequest",
+        "script": {
+          "type": "text/javascript",
+          "exec": [""]
+        }
+      },
+      {
+        "listen": "test",
+        "script": {
+          "type": "text/javascript",
+          "exec": [
+            "pm.test(\"Status code is 200\", function () {",
+            "    pm.response.to.have.status(200);",
+            "});",
+            "",
+            "pm.test(\"Response has correct structure\", function () {",
+            "    const responseData = pm.response.json();",
+            "    pm.expect(responseData).to.have.property('status');",
+            "    pm.expect(responseData).to.have.property('message');",
+            "});"
+          ]
+        }
+      }
+    ],
+    "variable": [
+      {
+        "key": "baseUrl",
+        "value": "http://localhost:3000",
+        "type": "string"
+      },
+      {
+        "key": "recipient_address",
+        "value": "RECIPIENT_WALLET_ADDRESS",
+        "type": "string"
+      }
+    ]
+  }
+  

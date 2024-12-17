@@ -1,0 +1,187 @@
+{
+  "info": {
+    "_postman_id": "7e9a1c2b-4f5d-4e3c-8a6d-9b2c3d4e5f9c",
+    "name": "Solana Transaction History",
+    "description": "Collection for testing transaction history between wallets",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Get Transaction History",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"fromPublicKey\": \"{{wallet1_public_key}}\",\n    \"toAddress\": \"{{wallet2_public_key}}\",\n    \"getHistory\": true\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/trigger",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "trigger"
+          ]
+        },
+        "description": "Retrieves transaction history between two wallets"
+      },
+      "response": [
+        {
+          "name": "Successful History Retrieval",
+          "originalRequest": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"fromPublicKey\": \"EXAMPLE_WALLET_1\",\n    \"toAddress\": \"EXAMPLE_WALLET_2\",\n    \"getHistory\": true\n}"
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [],
+          "body": "{\n    \"status\": \"success\",\n    \"message\": \"Transaction history retrieved successfully\",\n    \"history\": [\n        {\n            \"signature\": \"2xGVGnwqSHAQEMdHvhXGBTxzz7YdKyUnpyF1LYK3kgGHjKZRqk9PFDBNmPTPAFXmJkHE3YzNHa4Pmj8TEpgHnWHk\",\n            \"timestamp\": \"2024-03-20T12:34:56.789Z\",\n            \"amount\": 1000000000,\n            \"sender\": \"WALLET_1_ADDRESS\",\n            \"receiver\": \"WALLET_2_ADDRESS\",\n            \"status\": \"success\"\n        }\n    ]\n}"
+        }
+      ]
+    },
+    {
+      "name": "Burn Tokens",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"fromPrivateKey\": \"{{wallet1_private_key}}\",\n    \"fromPublicKey\": \"{{wallet1_public_key}}\",\n    \"mintAddress\": \"{{token_mint_address}}\",\n    \"amount\": 100,\n    \"decimals\": 9\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/burn-tokens",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "burn-tokens"
+          ]
+        },
+        "description": "Burns specified amount of tokens from a mint address"
+      },
+      "response": [
+        {
+          "name": "Successful Token Burn",
+          "originalRequest": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"fromPrivateKey\": \"EXAMPLE_PRIVATE_KEY\",\n    \"fromPublicKey\": \"EXAMPLE_PUBLIC_KEY\",\n    \"mintAddress\": \"EXAMPLE_MINT_ADDRESS\",\n    \"amount\": 100,\n    \"decimals\": 9\n}"
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [],
+          "body": "{\n    \"status\": \"success\",\n    \"message\": \"Tokens burned successfully\",\n    \"signature\": \"2xGVGnwqSHAQEMdHvhXGBTxzz7YdKyUnpyF1LYK3kgGHjKZRqk9PFDBNmPTPAFXmJkHE3YzNHa4Pmj8TEpgHnWHk\",\n    \"amount\": 100,\n    \"token\": \"EXAMPLE_MINT_ADDRESS\"\n}"
+        }
+      ]
+    },
+    {
+      "name": "Buy Tokens",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"privateKey\": \"{{wallet_private_key}}\",\n    \"tokenAddress\": \"{{token_mint_address}}\",\n    \"amountUSD\": 0.1\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/buy-tokens",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "buy-tokens"
+          ]
+        },
+        "description": "Purchases tokens using Jupiter swap"
+      },
+      "response": [
+        {
+          "name": "Successful Token Purchase",
+          "originalRequest": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"privateKey\": \"EXAMPLE_PRIVATE_KEY\",\n    \"tokenAddress\": \"EXAMPLE_TOKEN_ADDRESS\",\n    \"amountUSD\": 0.1\n}"
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [],
+          "body": "{\n    \"status\": \"success\",\n    \"message\": \"Token purchase completed successfully\",\n    \"data\": {\n        \"transactionId\": \"2xGVGnwqSHAQEMdHvhXGBTxzz7YdKyUnpyF1LYK3kgGHjKZRqk9PFDBNmPTPAFXmJkHE3YzNHa4Pmj8TEpgHnWHk\",\n        \"tokenAddress\": \"EXAMPLE_TOKEN_ADDRESS\",\n        \"amountUSD\": 0.1,\n        \"explorerUrl\": \"https://solscan.io/tx/2xGVGnwqSHAQEMdHvhXGBTxzz7YdKyUnpyF1LYK3kgGHjKZRqk9PFDBNmPTPAFXmJkHE3YzNHa4Pmj8TEpgHnWHk\"\n    }\n}"
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [""]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.test(\"Status code is 200\", function () {",
+          "    pm.response.to.have.status(200);",
+          "});",
+          "",
+          "pm.test(\"Response has correct structure\", function () {",
+          "    const responseData = pm.response.json();",
+          "    pm.expect(responseData).to.have.property('status');",
+          "    pm.expect(responseData).to.have.property('message');",
+          "    pm.expect(responseData).to.have.property('history');",
+          "    pm.expect(responseData.history).to.be.an('array');",
+          "});"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3001",
+      "type": "string"
+    },
+    {
+      "key": "wallet1_public_key",
+      "value": "WALLET_1_PUBLIC_KEY",
+      "type": "string"
+    },
+    {
+      "key": "wallet2_public_key",
+      "value": "WALLET_2_PUBLIC_KEY",
+      "type": "string"
+    }
+  ]
+} 

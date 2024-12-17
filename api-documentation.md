@@ -417,6 +417,69 @@ POST /holder-percentage
 | 400         | Missing parameters    | `{"status": "error", "message": "Missing required parameters"}` |
 | 500         | Invalid addresses     | `{"status": "error", "message": "Invalid mint or holder address"}` |
 
+### 8. Get Token Price
+
+Retrieves the current market price of a token from Serum DEX.
+
+### 9. Buy Tokens (Jupiter Swap)
+
+Executes a token purchase using Jupiter's swap functionality.
+
+```http
+POST /buy-tokens
+```
+
+#### Request
+
+##### Headers
+
+| Name          | Type   | Required | Description            |
+|---------------|--------|----------|------------------------|
+| Content-Type  | string | Yes      | application/json       |
+
+##### Body Parameters
+
+| Parameter    | Type   | Required | Description                                     |
+|-------------|---------|----------|-------------------------------------------------|
+| privateKey  | string  | Yes      | Private key of the purchasing wallet            |
+| tokenAddress| string  | Yes      | Mint address of the token to purchase           |
+| amountUSD   | number  | No       | Amount in USD to spend (default: 0.1)          |
+
+##### Example Request
+
+```json
+{
+    "privateKey": "YOUR_PRIVATE_KEY",
+    "tokenAddress": "TOKEN_MINT_ADDRESS",
+    "amountUSD": 0.1
+}
+```
+
+#### Response
+
+##### Success Response (200 OK)
+
+```json
+{
+    "status": "success",
+    "message": "Token purchase completed successfully",
+    "data": {
+        "transactionId": "2xGVGnwqSHAQEMdHvhXGBTxzz7YdKyUnpyF1LYK3kgGHjKZRqk9PFDBNmPTPAFXmJkHE3YzNHa4Pmj8TEpgHnWHk",
+        "tokenAddress": "TOKEN_MINT_ADDRESS",
+        "amountUSD": 0.1,
+        "explorerUrl": "https://solscan.io/tx/2xGVGnwqSHAQEMdHvhXGBTxzz7YdKyUnpyF1LYK3kgGHjKZRqk9PFDBNmPTPAFXmJkHE3YzNHa4Pmj8TEpgHnWHk"
+    }
+}
+```
+
+##### Error Responses
+
+| Status Code | Description           | Response Body                                    |
+|-------------|-----------------------|--------------------------------------------------|
+| 400         | Invalid request data  | `{"status": "error", "message": "Invalid request data"}` |
+| 400         | Missing parameters    | `{"status": "error", "message": "Missing required parameters"}` |
+| 400         | Swap failed          | `{"status": "error", "message": "Error details"}` |
+
 ## Rate Limiting
 
 Currently, there are no rate limits implemented. However, transactions are limited by:
@@ -520,6 +583,31 @@ const checkMintBalance = async (mintAddress: string) => {
 };
 ```
 
+#### Buy Tokens Using Jupiter Swap
+```typescript
+const buyTokens = async (privateKey: string, tokenAddress: string, amountUSD: number = 0.1) => {
+  try {
+    const response = await fetch('http://localhost:3001/buy-tokens', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        privateKey,
+        tokenAddress,
+        amountUSD
+      }),
+    });
+    
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Error:', error);
+    throw error;
+  }
+};
+```
+
 ### cURL
 
 #### Generate Wallet
@@ -558,6 +646,17 @@ curl -X POST https://web3-agent.onrender.com/check-mint-balance \
   }'
 ```
 
+#### Buy Tokens Using Jupiter Swap
+```bash
+curl -X POST http://localhost:3001/buy-tokens \
+  -H "Content-Type: application/json" \
+  -d '{
+    "privateKey": "YOUR_PRIVATE_KEY",
+    "tokenAddress": "TOKEN_MINT_ADDRESS",
+    "amountUSD": 0.1
+  }'
+```
+
 ## Testing
 
 A Postman collection is provided for testing both API endpoints. Import the provided `postman_collection.json` file into Postman to get started.
@@ -587,6 +686,12 @@ A Postman collection is provided for testing both API endpoints. Import the prov
 ### Version 1.2.0
 - Added wallet balance checking endpoint
 - Added balance information in lamports and SOL
+
+### Version 1.3.0
+- Added Jupiter swap integration for token purchases
+- Updated port configuration to use 3001
+- Added new endpoint documentation for /buy-tokens
+- Enhanced error handling for swap operations
 
 ## Support
 
