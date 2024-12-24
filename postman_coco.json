@@ -215,7 +215,7 @@
                   "check-balance"
                 ]
               },
-              "description": "Retrieves both SOL and token balances for a wallet"
+              "description": "Retrieves both SOL balance and specific token balance for a wallet address"
             },
             "response": [
               {
@@ -232,7 +232,23 @@
                 "code": 200,
                 "_postman_previewlanguage": "json",
                 "header": [],
-                "body": "{\n    \"status\": \"success\",\n    \"message\": \"Balance retrieved successfully\",\n    \"solBalance\": {\n        \"balance\": 1.5,\n        \"lamports\": 1500000000\n    },\n    \"tokenBalance\": {\n        \"mint\": \"EXAMPLE_MINT_ADDRESS\",\n        \"balance\": 1000000.0,\n        \"decimals\": 9,\n        \"rawAmount\": \"1000000000000000\"\n    }\n}"
+                "body": "{\n    \"status\": \"success\",\n    \"message\": \"Balance retrieved successfully\",\n    \"solBalance\": {\n        \"balance\": 1.5,\n        \"lamports\": 1500000000\n    },\n    \"tokenBalance\": {\n        \"mint\": \"EXAMPLE_MINT_ADDRESS\",\n        \"balance\": 100.0,\n        \"decimals\": 9,\n        \"rawAmount\": \"100000000000\"\n    }\n}"
+              },
+              {
+                "name": "No Token Balance",
+                "originalRequest": {
+                  "method": "POST",
+                  "header": [],
+                  "body": {
+                    "mode": "raw",
+                    "raw": "{\n    \"publicKey\": \"EXAMPLE_PUBLIC_KEY\",\n    \"mintAddress\": \"EXAMPLE_MINT_ADDRESS\"\n}"
+                  }
+                },
+                "status": "OK",
+                "code": 200,
+                "_postman_previewlanguage": "json",
+                "header": [],
+                "body": "{\n    \"status\": \"success\",\n    \"message\": \"Balance retrieved successfully\",\n    \"solBalance\": {\n        \"balance\": 1.5,\n        \"lamports\": 1500000000\n    },\n    \"tokenBalance\": {\n        \"mint\": \"EXAMPLE_MINT_ADDRESS\",\n        \"balance\": 0,\n        \"decimals\": 0,\n        \"rawAmount\": \"0\"\n    }\n}"
               }
             ]
           }

@@ -414,6 +414,42 @@ async function getTransactionHistory(wallet1, wallet2, limit = 10) {
     }
 }
 
+// Add this new function to check token balance for a specific wallet
+async function checkTokenBalance(walletAddress, mintAddress) {
+    try {
+        const walletPublicKey = new solanaWeb3.PublicKey(walletAddress);
+        const mintPublicKey = new solanaWeb3.PublicKey(mintAddress);
+        
+        // Get token accounts for this wallet
+        const tokenAccounts = await connection.getTokenAccountsByOwner(
+            walletPublicKey,
+            { mint: mintPublicKey }
+        );
+
+        // Sum up all tokens held by this wallet
+        let totalBalance = 0;
+        for (const account of tokenAccounts.value) {
+            const accountInfo = await connection.getTokenAccountBalance(account.pubkey);
+            totalBalance += Number(accountInfo.value.amount);
+            return {
+                amount: accountInfo.value.uiAmount,
+                decimals: accountInfo.value.decimals,
+                rawAmount: accountInfo.value.amount
+            };
+        }
+
+        // If no token accounts found, return zero balance
+        return {
+            amount: 0,
+            decimals: 0,
+            rawAmount: "0"
+        };
+    } catch (error) {
+        console.error('Error checking token balance:', error);
+        throw error;
+    }
+}
+
 // Create an HTTP server to receive triggers
 const server = http.createServer((req, res) => {
     // Add new endpoint for balance checking
@@ -447,10 +483,10 @@ const server = http.createServer((req, res) => {
                     lamports: solBalance
                 };
 
-                // If mintAddress is provided, get token balance
+                // If mintAddress is provided, get token balance for the specific wallet
                 if (mintAddress) {
                     try {
-                        const tokenBalance = await checkMintBalance(mintAddress);
+                        const tokenBalance = await checkTokenBalance(publicKey, mintAddress);
                         response.tokenBalance = {
                             mint: mintAddress,
                             balance: tokenBalance.amount,
