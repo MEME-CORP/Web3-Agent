@@ -99,7 +99,7 @@ class JupiterSwapTester {
                     {
                         signature: txid,
                         commitment: 'confirmed',
-                        timeout: 60000
+                        timeout: 120000
                     }
                 );
                 if (confirmation.value.err) {
