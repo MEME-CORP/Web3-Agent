@@ -96,7 +96,11 @@ class JupiterSwapTester {
 
                 const confirmation = await this.connection.confirmTransaction(
                     txid,
-                    'confirmed'
+                    {
+                        signature: txid,
+                        commitment: 'confirmed',
+                        timeout: 60000
+                    }
                 );
                 if (confirmation.value.err) {
                     throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
