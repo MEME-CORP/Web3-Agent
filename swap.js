@@ -49,7 +49,7 @@ class JupiterSwapTester {
                 dynamicComputeUnitLimit: true,
                 prioritizationFeeLamports: {
                     priorityLevelWithMaxLamports: {
-                        maxLamports: 10000000,
+                        maxLamports: 15000000,
                         priorityLevel: "veryHigh"
                     }
                 }
