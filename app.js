@@ -4,25 +4,82 @@ const solanaWeb3 = require('@solana/web3.js');
 const bs58 = require('bs58');
 const {
     getOrCreateAssociatedTokenAccount,
-    createBurnInstruction
+    createBurnInstruction,
+    createTransferInstruction
 } = require('@solana/spl-token');
 const JupiterSwapTester = require('./swap');
 
+// <-- NEW IMPORT for Priority Fees
+const { ComputeBudgetProgram } = require('@solana/web3.js');
+
 // Modify the connection setup to support both networks with improved timeouts
-const NETWORK = process.env.NETWORK || 'mainnet-beta'; // Change default to mainnet-beta
+const NETWORK = process.env.NETWORK || 'mainnet-beta';
 const connection = new solanaWeb3.Connection(
     solanaWeb3.clusterApiUrl(NETWORK),
     {
         commitment: 'finalized',
-        confirmTransactionInitialTimeout: 120000,  // 2 minutes
+        confirmTransactionInitialTimeout: 120000,
         disableRetryOnRateLimit: false,
-        timeout: 60000  // 60s
+        timeout: 60000
     }
 );
 
-// Add these constants after the existing connection setup
+/**
+ * Helper: Sleep/delay
+ */
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Function to check balance
+/**
+ * Helper: Send transaction with retry
+ */
+const sendAndConfirmTransactionWithRetry = async (
+  connection,
+  transaction,
+  signers,
+  maxRetries = 3
+) => {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const latestBlockhash = await connection.getLatestBlockhash('finalized');
+      transaction.recentBlockhash = latestBlockhash.blockhash;
+      transaction.lastValidBlockHeight = latestBlockhash.lastValidBlockHeight;
+
+      // Signers sign the transaction
+      transaction.sign(...signers);
+
+      const rawTx = transaction.serialize();
+      const signature = await connection.sendRawTransaction(rawTx, {
+        skipPreflight: false
+      });
+      console.log(`Transaction sent (attempt ${attempt}), signature: ${signature}`);
+
+      const confirmation = await connection.confirmTransaction(
+        {
+          signature,
+          blockhash: latestBlockhash.blockhash,
+          lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+        },
+        'finalized'
+      );
+
+      if (!confirmation.value.err) {
+        console.log(`Transaction confirmed on attempt ${attempt}: ${signature}`);
+        return signature;
+      } else {
+        console.error('Transaction failed, but no explicit error; retrying...');
+      }
+    } catch (err) {
+      console.error(`Error on attempt ${attempt}`, err?.message || err);
+      if (attempt === maxRetries) throw err;
+      await sleep(1000 * attempt);
+    }
+  }
+  throw new Error('Failed to confirm transaction after multiple attempts');
+};
+
+/**
+ * Check SOL wallet balance
+ */
 async function checkWalletBalance(publicKeyStr) {
     try {
         const publicKey = new solanaWeb3.PublicKey(publicKeyStr);
@@ -35,7 +92,9 @@ async function checkWalletBalance(publicKeyStr) {
     }
 }
 
-// Function to check mint balance
+/**
+ * Check mint supply
+ */
 async function checkMintBalance(mintAddress) {
     try {
         const mintPublicKey = new solanaWeb3.PublicKey(mintAddress);
@@ -52,33 +111,134 @@ async function checkMintBalance(mintAddress) {
     }
 }
 
-// Helper function to delay between requests
-const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+/**
+ * Transfer SOL
+ */
+async function sendSol(fromPrivateKey, fromPublicKey, toAddress, amount) {
+    try {
+        console.log('Initiating SOL transfer...');
+        console.log('To address:', toAddress);
+        console.log('Amount:', amount);
 
-// Add these improved helper functions near the top of the file
-const retryWithBackoff = async (fn, retries = 3, delay = 1000) => {
-    for (let i = 0; i < retries; i++) {
-        try {
-            return await fn();
-        } catch (error) {
-            if (i === retries - 1) throw error;
-            await sleep(delay * Math.pow(2, i));
+        if (!toAddress || typeof toAddress !== 'string') {
+            throw new Error(`Invalid recipient address type: ${typeof toAddress}`);
         }
-    }
-};
 
-// Enhanced getTopHolders function with better error handling and retry logic
+        toAddress = toAddress.trim();
+        const secretKey = bs58.decode(fromPrivateKey);
+        const senderKeypair = solanaWeb3.Keypair.fromSecretKey(secretKey);
+
+        if (senderKeypair.publicKey.toBase58() !== fromPublicKey) {
+            throw new Error('Provided public key does not match the private key');
+        }
+
+        const recipientPublicKey = new solanaWeb3.PublicKey(toAddress);
+        const balance = await connection.getBalance(senderKeypair.publicKey);
+        const amountLamports = solanaWeb3.LAMPORTS_PER_SOL * amount;
+        
+        if (balance < amountLamports) {
+            throw new Error(`Insufficient balance. Have ${balance / solanaWeb3.LAMPORTS_PER_SOL} SOL, need ${amount} SOL`);
+        }
+
+        const transaction = new solanaWeb3.Transaction().add(
+            solanaWeb3.SystemProgram.transfer({
+                fromPubkey: senderKeypair.publicKey,
+                toPubkey: recipientPublicKey,
+                lamports: amountLamports,
+            })
+        );
+
+        const signature = await sendAndConfirmTransactionWithRetry(
+            connection,
+            transaction,
+            [senderKeypair]
+        );
+        
+        console.log('\nSOL Transaction successful!');
+        console.log(`Signature: ${signature}`);
+        return signature;
+    } catch (error) {
+        console.error('Error sending SOL:', error.message);
+        throw error;
+    }
+}
+
+/**
+ * Generate random wallet
+ */
+async function generateWallet() {
+    try {
+        const keypair = solanaWeb3.Keypair.generate();
+        const publicKey = keypair.publicKey.toString();
+        const privateKey = bs58.encode(keypair.secretKey);
+        
+        return {
+            publicKey,
+            privateKey
+        };
+    } catch (error) {
+        console.error('Error generating wallet:', error.message);
+        throw error;
+    }
+}
+
+/**
+ * Transfer token from one wallet to another
+ */
+async function transferToken(fromPrivateKey, fromPublicKey, toAddress, mintAddress, amount, decimals = 9) {
+    try {
+        console.log('Initiating token transfer...');
+        const fromKeypair = solanaWeb3.Keypair.fromSecretKey(bs58.decode(fromPrivateKey));
+        const toPublicKey = new solanaWeb3.PublicKey(toAddress);
+        const mintPublicKey = new solanaWeb3.PublicKey(mintAddress);
+
+        // get associated token accounts
+        const fromATA = await getOrCreateAssociatedTokenAccount(
+            connection,
+            fromKeypair,
+            mintPublicKey,
+            fromKeypair.publicKey
+        );
+        const toATA = await getOrCreateAssociatedTokenAccount(
+            connection,
+            fromKeypair,
+            mintPublicKey,
+            toPublicKey
+        );
+
+        const transferInstruction = createTransferInstruction(
+            fromATA.address,
+            toATA.address,
+            fromKeypair.publicKey,
+            amount * (10 ** decimals)
+        );
+        const transaction = new solanaWeb3.Transaction().add(transferInstruction);
+
+        const signature = await sendAndConfirmTransactionWithRetry(
+            connection,
+            transaction,
+            [fromKeypair]
+        );
+        console.log('Token transfer successful!');
+        console.log(`Signature: ${signature}`);
+        return signature;
+    } catch (error) {
+        console.error('Error transferring token:', error);
+        throw error;
+    }
+}
+
+/**
+ * Retrieve top holders for a given mint
+ */
 async function getTopHolders(mintAddress, limit = 10) {
     try {
         const mintPublicKey = new solanaWeb3.PublicKey(mintAddress);
-        
-        // Validate mint account exists
         const mintInfo = await connection.getAccountInfo(mintPublicKey);
         if (!mintInfo) {
             throw new Error('Invalid mint address: Account not found');
         }
-
-        // Enhanced filters for token accounts
+        // get program accounts with retry
         const accounts = await retryWithBackoff(async () => {
             return await connection.getProgramAccounts(
                 new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'),
@@ -98,18 +258,15 @@ async function getTopHolders(mintAddress, limit = 10) {
             );
         });
 
-        // Process accounts in batches to manage memory
-        const BATCH_SIZE = 50; // Reduced batch size
-        const DELAY_BETWEEN_REQUESTS = 50; // 50ms delay between requests
+        const BATCH_SIZE = 50;
+        const DELAY_BETWEEN_REQUESTS = 50;
         const holders = [];
         
         for (let i = 0; i < accounts.length; i += BATCH_SIZE) {
             const batch = accounts.slice(i, i + BATCH_SIZE);
             const batchPromises = batch.map(async (account, index) => {
                 try {
-                    // Add delay between requests
                     await sleep(index * DELAY_BETWEEN_REQUESTS);
-                    
                     const accountInfo = await connection.getAccountInfo(account.pubkey);
                     if (!accountInfo || !accountInfo.data) return null;
                     
@@ -132,8 +289,7 @@ async function getTopHolders(mintAddress, limit = 10) {
             const validResults = batchResults.filter(result => result !== null);
             holders.push(...validResults);
 
-            // Sort and trim the array after each batch to keep memory usage down
-            // Fixed BigInt comparison
+            // sort and keep top N
             holders.sort((a, b) => {
                 const amountA = BigInt(a.amount);
                 const amountB = BigInt(b.amount);
@@ -145,11 +301,8 @@ async function getTopHolders(mintAddress, limit = 10) {
             if (holders.length > limit) {
                 holders.length = limit;
             }
-
-            // Add delay between batches
             await sleep(100);
         }
-
         return holders;
     } catch (error) {
         console.error('Error getting top holders:', error.message);
@@ -157,190 +310,100 @@ async function getTopHolders(mintAddress, limit = 10) {
     }
 }
 
-// Function to send SOL to a recipient address
-async function sendSol(fromPrivateKey, fromPublicKey, toAddress, amount) {
+/**
+ * Get transaction history between two wallets
+ */
+async function getTransactionHistory(wallet1, wallet2, limit = 10) {
     try {
-        console.log('Initiating transfer...');
-        console.log('To address:', toAddress);
-        console.log('Amount:', amount);
-
-        // Validate input
-        if (!toAddress || typeof toAddress !== 'string') {
-            throw new Error(`Invalid recipient address type: ${typeof toAddress}`);
-        }
-
-        // Clean the address string
-        toAddress = toAddress.trim();
-
-        // Create sender's keypair from private key
-        const secretKey = bs58.decode(fromPrivateKey);
-        const senderKeypair = solanaWeb3.Keypair.fromSecretKey(secretKey);
-
-        // Validate sender's public key matches
-        if (senderKeypair.publicKey.toBase58() !== fromPublicKey) {
-            throw new Error('Provided public key does not match the private key');
-        }
-
-        // Create recipient's public key
-        const recipientPublicKey = new solanaWeb3.PublicKey(toAddress);
-
-        // Check sender's balance
-        const balance = await connection.getBalance(senderKeypair.publicKey);
-        const amountLamports = solanaWeb3.LAMPORTS_PER_SOL * amount;
+        const pubKey1 = new solanaWeb3.PublicKey(wallet1);
+        const pubKey2 = new solanaWeb3.PublicKey(wallet2);
         
-        if (balance < amountLamports) {
-            throw new Error(`Insufficient balance. Have ${balance / solanaWeb3.LAMPORTS_PER_SOL} SOL, need ${amount} SOL`);
-        }
-
-        const transaction = new solanaWeb3.Transaction().add(
-            solanaWeb3.SystemProgram.transfer({
-                fromPubkey: senderKeypair.publicKey,
-                toPubkey: recipientPublicKey,
-                lamports: amountLamports,
-            })
+        const signatures = await connection.getSignaturesForAddress(
+            pubKey1,
+            { limit: 100 },
+            'confirmed'
         );
 
-        // Use the new robust helper for transaction confirmation
-        const signature = await sendAndConfirmTransactionWithRetry(
-            connection,
-            transaction,
-            [senderKeypair]
-        );
-        
-        console.log('\nTransaction successful!');
-        console.log(`Signature: ${signature}`);
-        
-        return signature;
+        const transactions = [];
+        for (const signatureInfo of signatures) {
+            try {
+                const tx = await connection.getTransaction(signatureInfo.signature, {
+                    maxSupportedTransactionVersion: 0
+                });
+                if (!tx) continue;
+                const involvesBothWallets = tx.transaction.message.accountKeys.some(key => 
+                    key.equals(pubKey2)
+                );
+                if (involvesBothWallets) {
+                    transactions.push({
+                        signature: signatureInfo.signature,
+                        timestamp: new Date(tx.blockTime * 1000).toISOString(),
+                        amount: tx.meta?.postBalances[0] - tx.meta?.preBalances[0],
+                        sender: tx.transaction.message.accountKeys[0].toString(),
+                        receiver: tx.transaction.message.accountKeys[1].toString(),
+                        status: tx.meta?.err ? 'failed' : 'success'
+                    });
+                    if (transactions.length >= limit) break;
+                }
+            } catch (err) {
+                console.warn(`Error processing transaction: ${err.message}`);
+                continue;
+            }
+        }
+        return transactions;
     } catch (error) {
-        console.error('Error sending SOL:', error.message);
+        console.error('Error getting transaction history:', error);
         throw error;
     }
 }
 
-// Function to generate a new wallet
-async function generateWallet() {
+/**
+ * Check token balance for a specific wallet
+ */
+async function checkTokenBalance(walletAddress, mintAddress) {
     try {
-        const keypair = solanaWeb3.Keypair.generate();
-        const publicKey = keypair.publicKey.toString();
-        const privateKey = bs58.encode(keypair.secretKey);
-        
-        return {
-            publicKey,
-            privateKey
-        };
-    } catch (error) {
-        console.error('Error generating wallet:', error.message);
-        throw error;
-    }
-}
-
-// Add new function for token transfer
-async function transferToken(fromPrivateKey, fromPublicKey, toAddress, mintAddress, amount) {
-    try {
-        const fromKeypair = solanaWeb3.Keypair.fromSecretKey(bs58.decode(fromPrivateKey));
-        const toPublicKey = new solanaWeb3.PublicKey(toAddress);
+        const walletPublicKey = new solanaWeb3.PublicKey(walletAddress);
         const mintPublicKey = new solanaWeb3.PublicKey(mintAddress);
-
-        // Create associated token accounts if they don't exist
-        const fromATA = await getOrCreateAssociatedTokenAccount(
-            connection,
-            fromKeypair,
-            mintPublicKey,
-            fromKeypair.publicKey
-        );
-
-        const toATA = await getOrCreateAssociatedTokenAccount(
-            connection,
-            fromKeypair,
-            mintPublicKey,
-            toPublicKey
-        );
-
-        // Create transfer instruction
-        const transferInstruction = createTransferInstruction(
-            fromATA.address,
-            toATA.address,
-            fromKeypair.publicKey,
-            amount * (10 ** decimals)
-        );
-
-        const transaction = new solanaWeb3.Transaction().add(transferInstruction);
         
-        // Use the new robust helper for transaction confirmation
-        const signature = await sendAndConfirmTransactionWithRetry(
-            connection,
-            transaction,
-            [fromKeypair]
-        );
-
-        return signature;
-    } catch (error) {
-        console.error('Error transferring token:', error);
-        throw error;
-    }
-}
-
-// Add this new function near the other helper functions
-async function getHolderPercentage(mintAddress, holderAddress) {
-    try {
-        // Get total supply
-        const mintPublicKey = new solanaWeb3.PublicKey(mintAddress);
-        const holderPublicKey = new solanaWeb3.PublicKey(holderAddress);
-        
-        // Get mint info for total supply
-        const mintInfo = await connection.getTokenSupply(mintPublicKey);
-        const totalSupply = Number(mintInfo.value.amount);
-        
-        if (totalSupply === 0) {
-            throw new Error('Token has no supply');
-        }
-
-        // Get holder's token account
         const tokenAccounts = await connection.getTokenAccountsByOwner(
-            holderPublicKey,
+            walletPublicKey,
             { mint: mintPublicKey }
         );
 
-        // Sum up all tokens held by this wallet
-        let holderBalance = 0;
         for (const account of tokenAccounts.value) {
             const accountInfo = await connection.getTokenAccountBalance(account.pubkey);
-            holderBalance += Number(accountInfo.value.amount);
+            return {
+                amount: accountInfo.value.uiAmount,
+                decimals: accountInfo.value.decimals,
+                rawAmount: accountInfo.value.amount
+            };
         }
-
-        // Calculate percentage
-        const percentage = (holderBalance / totalSupply) * 100;
-
+        // if no token accounts found, return zero
         return {
-            totalSupply,
-            holderBalance,
-            percentage: parseFloat(percentage.toFixed(4)),
-            decimals: mintInfo.value.decimals
+            amount: 0,
+            decimals: 0,
+            rawAmount: "0"
         };
     } catch (error) {
-        console.error('Error getting holder percentage:', error);
+        console.error('Error checking token balance:', error);
         throw error;
     }
 }
 
-// Update the getTokenPrice function with better error handling and market lookup
+/**
+ * Get token price from Jupiter
+ */
 async function getTokenPrice(mintAddress) {
     try {
-        // Use Jupiter's v2 price API
         const response = await fetch(`https://api.jup.ag/price/v2?ids=${mintAddress}&showExtraInfo=true`);
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
-        
         const data = await response.json();
-        
-        // Check if we got price data for the requested token
         if (!data.data || !data.data[mintAddress]) {
             throw new Error('No price data available for this token');
         }
-
         const tokenData = data.data[mintAddress];
-        
         return {
             price: parseFloat(tokenData.price),
             type: tokenData.type,
@@ -363,199 +426,51 @@ async function getTokenPrice(mintAddress) {
     }
 }
 
-// Add this new function near the other helper functions
-async function getTransactionHistory(wallet1, wallet2, limit = 10) {
-    try {
-        const pubKey1 = new solanaWeb3.PublicKey(wallet1);
-        const pubKey2 = new solanaWeb3.PublicKey(wallet2);
-        
-        // Get signatures for both wallets
-        const signatures = await connection.getSignaturesForAddress(
-            pubKey1,
-            { limit: 100 },
-            'confirmed'
-        );
-
-        const transactions = [];
-        for (const signatureInfo of signatures) {
-            try {
-                const tx = await connection.getTransaction(signatureInfo.signature, {
-                    maxSupportedTransactionVersion: 0
-                });
-
-                if (!tx) continue;
-
-                // Check if the transaction involves both wallets
-                const involvesBothWallets = tx.transaction.message.accountKeys.some(key => 
-                    key.equals(pubKey2)
-                );
-
-                if (involvesBothWallets) {
-                    transactions.push({
-                        signature: signatureInfo.signature,
-                        timestamp: new Date(tx.blockTime * 1000).toISOString(),
-                        amount: tx.meta?.postBalances[0] - tx.meta?.preBalances[0],
-                        sender: tx.transaction.message.accountKeys[0].toString(),
-                        receiver: tx.transaction.message.accountKeys[1].toString(),
-                        status: tx.meta?.err ? 'failed' : 'success'
-                    });
-
-                    if (transactions.length >= limit) break;
-                }
-            } catch (err) {
-                console.warn(`Error processing transaction: ${err.message}`);
-                continue;
-            }
-        }
-
-        return transactions;
-    } catch (error) {
-        console.error('Error getting transaction history:', error);
-        throw error;
-    }
-}
-
-// Add this new function to check token balance for a specific wallet
-async function checkTokenBalance(walletAddress, mintAddress) {
-    try {
-        const walletPublicKey = new solanaWeb3.PublicKey(walletAddress);
-        const mintPublicKey = new solanaWeb3.PublicKey(mintAddress);
-        
-        // Get token accounts for this wallet
-        const tokenAccounts = await connection.getTokenAccountsByOwner(
-            walletPublicKey,
-            { mint: mintPublicKey }
-        );
-
-        // Sum up all tokens held by this wallet
-        let totalBalance = 0;
-        for (const account of tokenAccounts.value) {
-            const accountInfo = await connection.getTokenAccountBalance(account.pubkey);
-            totalBalance += Number(accountInfo.value.amount);
-            return {
-                amount: accountInfo.value.uiAmount,
-                decimals: accountInfo.value.decimals,
-                rawAmount: accountInfo.value.amount
-            };
-        }
-
-        // If no token accounts found, return zero balance
-        return {
-            amount: 0,
-            decimals: 0,
-            rawAmount: "0"
-        };
-    } catch (error) {
-        console.error('Error checking token balance:', error);
-        throw error;
-    }
-}
-
-// Add these improved transaction handling functions near the top of the file, after the connection setup
-const sendAndConfirmTransactionWithRetry = async (
-  connection,
-  transaction,
-  signers,
-  maxRetries = 3
-) => {
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      // Fetch a fresh, valid blockhash each attempt
-      const latestBlockhash = await connection.getLatestBlockhash('finalized');
-      transaction.recentBlockhash = latestBlockhash.blockhash;
-      transaction.lastValidBlockHeight = latestBlockhash.lastValidBlockHeight;
-
-      // Make sure all signers actually sign the transaction
-      transaction.sign(...signers);
-
-      // Send the serialized transaction
-      const rawTx = transaction.serialize();
-      const signature = await connection.sendRawTransaction(rawTx, {
-        skipPreflight: false,
-      });
-      console.log(`Transaction sent (attempt ${attempt}), signature: ${signature}`);
-
-      // Manually confirm with the blockhash and lastValidBlockHeight
-      const confirmation = await connection.confirmTransaction(
-        {
-          signature,
-          blockhash: latestBlockhash.blockhash,
-          lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
-        },
-        'finalized'
-      );
-
-      // If there's no error in confirmation, we are good to go
-      if (!confirmation.value.err) {
-        console.log(`Transaction confirmed on attempt ${attempt}: ${signature}`);
-        return signature; // Success — return the signature
-      } else {
-        console.error('Transaction failed, but no explicit error; retrying...');
-      }
-    } catch (err) {
-      console.error(`Error on attempt ${attempt}`, err?.message || err);
-      if (attempt === maxRetries) throw err;
-      // Add delay between retries
-      await sleep(1000 * attempt);
-    }
-  }
-
-  // If all retries fail, throw
-  throw new Error('Failed to confirm transaction after multiple attempts');
-};
-
-// Create an HTTP server to receive triggers
+/**
+ * Jupiter Swap logic
+ */
 const server = http.createServer((req, res) => {
-    // Add new endpoint for balance checking
+    // -------------------------
+    // CHECK-BALANCE
+    // -------------------------
     if (req.method === 'POST' && req.url === '/check-balance') {
         let body = '';
-
-        req.on('data', chunk => {
-            body += chunk.toString();
-        });
-
+        req.on('data', chunk => { body += chunk.toString(); });
         req.on('end', async () => {
             try {
                 const data = JSON.parse(body);
                 const { publicKey, mintAddress } = data;
-
                 if (!publicKey) {
                     throw new Error('Missing public key parameter');
                 }
-
-                let response = {
+                let responseData = {
                     status: 'success',
                     message: 'Balance retrieved successfully',
                     solBalance: null,
                     tokenBalance: null
                 };
-
-                // Get SOL balance
                 const solBalance = await checkWalletBalance(publicKey);
-                response.solBalance = {
+                responseData.solBalance = {
                     balance: solBalance / solanaWeb3.LAMPORTS_PER_SOL,
                     lamports: solBalance
                 };
-
-                // If mintAddress is provided, get token balance for the specific wallet
                 if (mintAddress) {
                     try {
                         const tokenBalance = await checkTokenBalance(publicKey, mintAddress);
-                        response.tokenBalance = {
+                        responseData.tokenBalance = {
                             mint: mintAddress,
                             balance: tokenBalance.amount,
                             decimals: tokenBalance.decimals,
                             rawAmount: tokenBalance.rawAmount
                         };
                     } catch (error) {
-                        response.tokenBalance = {
+                        responseData.tokenBalance = {
                             error: error.message
                         };
                     }
                 }
-
                 res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify(response));
+                res.end(JSON.stringify(responseData));
             } catch (error) {
                 console.error(error);
                 res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -566,23 +481,19 @@ const server = http.createServer((req, res) => {
             }
         });
     }
-    // Add new endpoint for mint balance checking
+    // -------------------------
+    // CHECK-MINT-BALANCE
+    // -------------------------
     else if (req.method === 'POST' && req.url === '/check-mint-balance') {
         let body = '';
-
-        req.on('data', chunk => {
-            body += chunk.toString();
-        });
-
+        req.on('data', chunk => { body += chunk.toString(); });
         req.on('end', () => {
             try {
                 const data = JSON.parse(body);
                 const { mintAddress } = data;
-
                 if (!mintAddress) {
                     throw new Error('Missing mint address parameter');
                 }
-
                 checkMintBalance(mintAddress)
                     .then((balance) => {
                         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -612,7 +523,9 @@ const server = http.createServer((req, res) => {
             }
         });
     }
-    // Add new endpoint for wallet generation
+    // -------------------------
+    // GENERATE-WALLET
+    // -------------------------
     else if (req.method === 'POST' && req.url === '/generate-wallet') {
         generateWallet()
             .then((wallet) => {
@@ -635,14 +548,12 @@ const server = http.createServer((req, res) => {
                 }));
             });
     }
-    // Modify the transfer endpoint handler
+    // -------------------------
+    // TRIGGER (SOL OR TOKEN TRANSFER)
+    // -------------------------
     else if (req.method === 'POST' && req.url === '/trigger') {
         let body = '';
-
-        req.on('data', chunk => {
-            body += chunk.toString();
-        });
-
+        req.on('data', chunk => { body += chunk.toString(); });
         req.on('end', async () => {
             try {
                 const data = JSON.parse(body);
@@ -652,15 +563,14 @@ const server = http.createServer((req, res) => {
                     toAddress, 
                     amount, 
                     mintAddress,
-                    getHistory // New parameter
+                    getHistory 
                 } = data;
 
-                // If getHistory is true, return transaction history
+                // if user only wants the transaction history
                 if (getHistory) {
                     if (!fromPublicKey || !toAddress) {
                         throw new Error('Missing wallet addresses for history');
                     }
-
                     const history = await getTransactionHistory(fromPublicKey, toAddress);
                     res.writeHead(200, { 'Content-Type': 'application/json' });
                     return res.end(JSON.stringify({
@@ -670,18 +580,27 @@ const server = http.createServer((req, res) => {
                     }));
                 }
 
-                // Original transfer logic
                 if (!fromPrivateKey || !fromPublicKey || !toAddress || !amount) {
                     throw new Error('Missing required parameters');
                 }
 
                 let signature;
                 if (mintAddress) {
-                    signature = await transferToken(fromPrivateKey, fromPublicKey, toAddress, mintAddress, amount);
+                    signature = await transferToken(
+                        fromPrivateKey,
+                        fromPublicKey,
+                        toAddress,
+                        mintAddress,
+                        amount
+                    );
                 } else {
-                    signature = await sendSol(fromPrivateKey, fromPublicKey, toAddress, amount);
+                    signature = await sendSol(
+                        fromPrivateKey,
+                        fromPublicKey,
+                        toAddress,
+                        amount
+                    );
                 }
-
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({
                     status: 'success',
@@ -700,23 +619,19 @@ const server = http.createServer((req, res) => {
             }
         });
     }
-    // Add new endpoint for top holders
+    // -------------------------
+    // GET-TOP-HOLDERS
+    // -------------------------
     else if (req.method === 'POST' && req.url === '/get-top-holders') {
         let body = '';
-
-        req.on('data', chunk => {
-            body += chunk.toString();
-        });
-
+        req.on('data', chunk => { body += chunk.toString(); });
         req.on('end', () => {
             try {
                 const data = JSON.parse(body);
                 const { mintAddress, limit } = data;
-
                 if (!mintAddress) {
                     throw new Error('Missing mint address parameter');
                 }
-
                 getTopHolders(mintAddress, limit || 10)
                     .then((holders) => {
                         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -744,16 +659,15 @@ const server = http.createServer((req, res) => {
             }
         });
     }
-    // Add the burn tokens endpoint handler
+    // -------------------------
+    // BURN TOKENS (with Priority Fee)
+    // -------------------------
     else if (req.method === 'POST' && req.url === '/burn-tokens') {
         let body = '';
-
-        req.on('data', chunk => {
-            body += chunk.toString();
-        });
-
+        req.on('data', chunk => { body += chunk.toString(); });
         req.on('end', async () => {
             try {
+                console.log('Received burn-tokens request...');
                 const data = JSON.parse(body);
                 const { fromPrivateKey, fromPublicKey, mintAddress, amount, decimals } = data;
 
@@ -767,10 +681,25 @@ const server = http.createServer((req, res) => {
                 if (fromKeypair.publicKey.toBase58() !== fromPublicKey) {
                     throw new Error('Provided public key does not match the private key');
                 }
-
+                
+                console.log(`Burning ${amount} tokens from mint: ${mintAddress} ...`);
                 const mintPublicKey = new solanaWeb3.PublicKey(mintAddress);
 
-                // Get or create associated token account
+                // Priority fee in microLamports (1 lamport = 1e6 microLamports)
+                // e.g. 10000 microLamports = 0.00001 SOL
+                const priorityMicroLamports = 500000; // Adjust as needed
+
+                // Add compute budget instructions for priority fee
+                const priorityIxs = [
+                    ComputeBudgetProgram.setComputeUnitLimit({
+                        units: 1_400_000, // can adjust up or down
+                    }),
+                    ComputeBudgetProgram.setComputeUnitPrice({
+                        microLamports: priorityMicroLamports,
+                    }),
+                ];
+
+                // Get associated token account
                 const fromATA = await getOrCreateAssociatedTokenAccount(
                     connection,
                     fromKeypair,
@@ -778,7 +707,6 @@ const server = http.createServer((req, res) => {
                     fromKeypair.publicKey
                 );
 
-                // Create burn instruction
                 const burnInstruction = createBurnInstruction(
                     fromATA.address,
                     mintPublicKey,
@@ -786,9 +714,11 @@ const server = http.createServer((req, res) => {
                     amount * (10 ** decimals)
                 );
 
-                const transaction = new solanaWeb3.Transaction().add(burnInstruction);
+                // Construct transaction with priority instructions first
+                const transaction = new solanaWeb3.Transaction()
+                  .add(...priorityIxs)
+                  .add(burnInstruction);
 
-                // Use the new robust helper
                 const signature = await sendAndConfirmTransactionWithRetry(
                     connection,
                     transaction,
@@ -804,7 +734,7 @@ const server = http.createServer((req, res) => {
                     token: mintAddress
                 }));
             } catch (error) {
-                console.error(error);
+                console.error('Error in /burn-tokens:', error);
                 res.writeHead(400, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({
                     status: 'error',
@@ -813,25 +743,20 @@ const server = http.createServer((req, res) => {
             }
         });
     }
-    // Add this new endpoint handler in the server creation section
+    // -------------------------
+    // HOLDER-PERCENTAGE
+    // -------------------------
     else if (req.method === 'POST' && req.url === '/holder-percentage') {
         let body = '';
-
-        req.on('data', chunk => {
-            body += chunk.toString();
-        });
-
+        req.on('data', chunk => { body += chunk.toString(); });
         req.on('end', async () => {
             try {
                 const data = JSON.parse(body);
                 const { mintAddress, holderAddress } = data;
-
                 if (!mintAddress || !holderAddress) {
                     throw new Error('Missing required parameters: mintAddress and holderAddress');
                 }
-
                 const percentageInfo = await getHolderPercentage(mintAddress, holderAddress);
-
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({
                     status: 'success',
@@ -848,25 +773,20 @@ const server = http.createServer((req, res) => {
             }
         });
     }
-    // Add this new endpoint handler in the server creation section
+    // -------------------------
+    // GET-TOKEN-PRICE
+    // -------------------------
     else if (req.method === 'POST' && req.url === '/get-token-price') {
         let body = '';
-
-        req.on('data', chunk => {
-            body += chunk.toString();
-        });
-
+        req.on('data', chunk => { body += chunk.toString(); });
         req.on('end', async () => {
             try {
                 const data = JSON.parse(body);
                 const { mintAddress } = data;
-
                 if (!mintAddress) {
                     throw new Error('Missing mint address parameter');
                 }
-
                 const priceInfo = await getTokenPrice(mintAddress);
-                
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({
                     status: 'success',
@@ -883,36 +803,26 @@ const server = http.createServer((req, res) => {
             }
         });
     }
-    // Add this new endpoint handler in the server creation section
+    // -------------------------
+    // BUY TOKENS
+    // -------------------------
     else if (req.method === 'POST' && req.url === '/buy-tokens') {
         let body = '';
-
-        req.on('data', chunk => {
-            body += chunk.toString();
-        });
-
+        req.on('data', chunk => { body += chunk.toString(); });
         req.on('end', async () => {
             try {
                 const data = JSON.parse(body);
-                const { 
-                    privateKey,
-                    tokenAddress,
-                    amountUSD = 0.1  // Default to 0.1 USD if not specified
-                } = data;
-
+                const { privateKey, tokenAddress, amountUSD = 0.1 } = data;
                 if (!privateKey || !tokenAddress) {
                     throw new Error('Missing required parameters: privateKey and tokenAddress');
                 }
 
-                // Create a temporary environment for the swap
+                // Temporarily override environment variable for JupiterSwapTester
                 const originalPrivateKey = process.env.PRIVATE_KEY;
                 process.env.PRIVATE_KEY = privateKey;
 
                 try {
-                    // Initialize Jupiter swap tester
                     const jupiterSwap = new JupiterSwapTester();
-
-                    // Execute the swap
                     const result = await jupiterSwap.testSwap(tokenAddress, amountUSD);
 
                     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -927,14 +837,13 @@ const server = http.createServer((req, res) => {
                         }
                     }));
                 } finally {
-                    // Restore original environment
+                    // Restore environment
                     if (originalPrivateKey) {
                         process.env.PRIVATE_KEY = originalPrivateKey;
                     } else {
                         delete process.env.PRIVATE_KEY;
                     }
                 }
-
             } catch (error) {
                 console.error('Error buying tokens:', error);
                 res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -944,19 +853,20 @@ const server = http.createServer((req, res) => {
                 }));
             }
         });
-    } else {
+    }
+    // -------------------------
+    // 404 NOT FOUND
+    // -------------------------
+    else {
         res.writeHead(404);
-        res.end();
+        res.end('Not Found');
     }
 });
 
-const PORT = 3001; // Force port 3001
+const PORT = 3001;
 const HOST = '0.0.0.0';
 
 server.listen(PORT, HOST, () => {
     console.log(`Server is listening on ${HOST}:${PORT}`);
     console.log(`Server running at http://localhost:${PORT}`);
-}); 
-
-
-
+});
