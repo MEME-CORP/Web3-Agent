@@ -44,7 +44,7 @@ class JupiterSwapTester {
     async executeSwap(quoteResponse) {
         logger.info('Preparing swap transaction...');
         
-        const { swapTransaction, lastValidBlockHeight } = await (
+        const { swapTransaction } = await (
             await fetch('https://quote-api.jup.ag/v6/swap', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -63,6 +63,10 @@ class JupiterSwapTester {
                 }),
             })
         ).json();
+
+        if (!swapTransaction) {
+            throw new Error('Failed to get swap transaction');
+        }
 
         logger.info('Deserializing transaction...');
         const transaction = VersionedTransaction.deserialize(
@@ -89,16 +93,12 @@ class JupiterSwapTester {
 
         logger.info('Simulation successful, sending transaction...');
         
-        // Use the blockhash from the transaction message
-        const blockhash = transaction.message.recentBlockhash;
-        const serializedTransaction = transaction.serialize();
-
         // Send with retries
         let retries = 3;
         while (retries > 0) {
             try {
                 const txid = await this.connection.sendRawTransaction(
-                    serializedTransaction,
+                    transaction.serialize(),
                     {
                         skipPreflight: true,
                         maxRetries: 3,
@@ -108,12 +108,11 @@ class JupiterSwapTester {
 
                 logger.info(`Transaction sent: ${txid}`);
 
-                // Wait for confirmation with proper blockhash
-                const confirmation = await this.connection.confirmTransaction({
-                    signature: txid,
-                    blockhash: blockhash,
-                    lastValidBlockHeight: lastValidBlockHeight
-                }, 'confirmed');
+                // More resilient confirmation approach
+                const confirmation = await this.connection.confirmTransaction(
+                    txid,
+                    'confirmed'
+                );
 
                 if (confirmation.value.err) {
                     throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
