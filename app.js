@@ -14,9 +14,9 @@ const connection = new solanaWeb3.Connection(
     solanaWeb3.clusterApiUrl(NETWORK),
     {
         commitment: 'confirmed',
-        confirmTransactionInitialTimeout: 60000,
+        confirmTransactionInitialTimeout: 90000,
         disableRetryOnRateLimit: false,
-        timeout: 30000
+        timeout: 60000
     }
 );
 
