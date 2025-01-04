@@ -715,7 +715,7 @@ const server = http.createServer((req, res) => {
                 const mintPublicKey = new solanaWeb3.PublicKey(mintAddress);
 
                 // Priority fee in microLamports
-                const priorityMicroLamports = 100000; // 0.0002 SOL, adjust if needed
+                const priorityMicroLamports = 150000; // 0.0002 SOL, adjust if needed
 
                 const priorityIxs = [
                     ComputeBudgetProgram.setComputeUnitLimit({
