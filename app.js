@@ -9,10 +9,10 @@ const {
 } = require('@solana/spl-token');
 const JupiterSwapTester = require('./swap');
 
-// <-- NEW IMPORT for Priority Fees
+// For Priority Fees
 const { ComputeBudgetProgram } = require('@solana/web3.js');
 
-// Modify the connection setup to support both networks with improved timeouts
+// Adjust network and connection timeouts as needed
 const NETWORK = process.env.NETWORK || 'mainnet-beta';
 const connection = new solanaWeb3.Connection(
     solanaWeb3.clusterApiUrl(NETWORK),
@@ -24,58 +24,85 @@ const connection = new solanaWeb3.Connection(
     }
 );
 
-/**
- * Helper: Sleep/delay
- */
+// Simple sleep utility
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
- * Helper: Send transaction with retry
+ * Poll for transaction confirmation every 5 seconds, for up to 60 seconds
  */
-const sendAndConfirmTransactionWithRetry = async (
+async function pollForConfirmation(signature, maxPollTimeMs = 60000, pollIntervalMs = 5000) {
+    const startTime = Date.now();
+    while (Date.now() - startTime < maxPollTimeMs) {
+        try {
+            const txInfo = await connection.getTransaction(signature, {
+                maxSupportedTransactionVersion: 0
+            });
+            // If we found transaction data, check if it's confirmed
+            if (txInfo && txInfo.meta) {
+                // If meta.err is null, success
+                if (!txInfo.meta.err) {
+                    console.log(`Transaction ${signature} is confirmed on-chain.`);
+                    return true;
+                } else {
+                    // On-chain says it failed
+                    console.log(`Transaction ${signature} failed on-chain:`, txInfo.meta.err);
+                    return false;
+                }
+            }
+            // If no tx data yet, wait and poll again
+        } catch (err) {
+            console.warn(`Error while polling for confirmation of ${signature}:`, err.message);
+        }
+        await sleep(pollIntervalMs);
+    }
+    // Timed out
+    console.error(`Polling timed out. No on-chain confirmation for ${signature} within ${maxPollTimeMs}ms`);
+    return false;
+}
+
+/**
+ * Send transaction with up to N retries, each time polling for final on-chain confirmation.
+ */
+async function sendAndConfirmTransactionWithRetry(
   connection,
   transaction,
   signers,
   maxRetries = 3
-) => {
+) {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
+      // Get the latest blockhash
       const latestBlockhash = await connection.getLatestBlockhash('finalized');
       transaction.recentBlockhash = latestBlockhash.blockhash;
       transaction.lastValidBlockHeight = latestBlockhash.lastValidBlockHeight;
 
-      // Signers sign the transaction
+      // Sign transaction
       transaction.sign(...signers);
 
+      // Send
       const rawTx = transaction.serialize();
       const signature = await connection.sendRawTransaction(rawTx, {
         skipPreflight: false
       });
       console.log(`Transaction sent (attempt ${attempt}), signature: ${signature}`);
 
-      const confirmation = await connection.confirmTransaction(
-        {
-          signature,
-          blockhash: latestBlockhash.blockhash,
-          lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
-        },
-        'finalized'
-      );
-
-      if (!confirmation.value.err) {
+      // Instead of using confirmTransaction directly, poll for on-chain confirmation
+      const confirmed = await pollForConfirmation(signature);
+      if (confirmed) {
         console.log(`Transaction confirmed on attempt ${attempt}: ${signature}`);
         return signature;
       } else {
-        console.error('Transaction failed, but no explicit error; retrying...');
+        console.error(`Transaction ${signature} not confirmed on-chain; retrying (attempt ${attempt})...`);
       }
     } catch (err) {
-      console.error(`Error on attempt ${attempt}`, err?.message || err);
+      console.error(`Error on attempt ${attempt}:`, err?.message || err);
       if (attempt === maxRetries) throw err;
+      // Delay before next attempt
       await sleep(1000 * attempt);
     }
   }
   throw new Error('Failed to confirm transaction after multiple attempts');
-};
+}
 
 /**
  * Check SOL wallet balance
@@ -227,6 +254,20 @@ async function transferToken(fromPrivateKey, fromPublicKey, toAddress, mintAddre
         throw error;
     }
 }
+
+/**
+ * Helper for get-top-holders with retry
+ */
+const retryWithBackoff = async (fn, retries = 3, delay = 1000) => {
+    for (let i = 0; i < retries; i++) {
+        try {
+            return await fn();
+        } catch (error) {
+            if (i === retries - 1) throw error;
+            await sleep(delay * Math.pow(2, i));
+        }
+    }
+};
 
 /**
  * Retrieve top holders for a given mint
@@ -427,7 +468,7 @@ async function getTokenPrice(mintAddress) {
 }
 
 /**
- * Jupiter Swap logic
+ * Create and start the HTTP server
  */
 const server = http.createServer((req, res) => {
     // -------------------------
@@ -566,7 +607,6 @@ const server = http.createServer((req, res) => {
                     getHistory 
                 } = data;
 
-                // if user only wants the transaction history
                 if (getHistory) {
                     if (!fromPublicKey || !toAddress) {
                         throw new Error('Missing wallet addresses for history');
@@ -586,20 +626,9 @@ const server = http.createServer((req, res) => {
 
                 let signature;
                 if (mintAddress) {
-                    signature = await transferToken(
-                        fromPrivateKey,
-                        fromPublicKey,
-                        toAddress,
-                        mintAddress,
-                        amount
-                    );
+                    signature = await transferToken(fromPrivateKey, fromPublicKey, toAddress, mintAddress, amount);
                 } else {
-                    signature = await sendSol(
-                        fromPrivateKey,
-                        fromPublicKey,
-                        toAddress,
-                        amount
-                    );
+                    signature = await sendSol(fromPrivateKey, fromPublicKey, toAddress, amount);
                 }
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({
@@ -681,25 +710,23 @@ const server = http.createServer((req, res) => {
                 if (fromKeypair.publicKey.toBase58() !== fromPublicKey) {
                     throw new Error('Provided public key does not match the private key');
                 }
-                
+
                 console.log(`Burning ${amount} tokens from mint: ${mintAddress} ...`);
                 const mintPublicKey = new solanaWeb3.PublicKey(mintAddress);
 
-                // Priority fee in microLamports (1 lamport = 1e6 microLamports)
-                // e.g. 10000 microLamports = 0.00001 SOL
-                const priorityMicroLamports = 200000; // Adjust as needed
+                // Priority fee in microLamports
+                const priorityMicroLamports = 200000; // 0.0002 SOL, adjust if needed
 
-                // Add compute budget instructions for priority fee
                 const priorityIxs = [
                     ComputeBudgetProgram.setComputeUnitLimit({
-                        units: 1_400_000, // can adjust up or down
+                        units: 1_400_000,
                     }),
                     ComputeBudgetProgram.setComputeUnitPrice({
                         microLamports: priorityMicroLamports,
                     }),
                 ];
 
-                // Get associated token account
+                // get or create token account
                 const fromATA = await getOrCreateAssociatedTokenAccount(
                     connection,
                     fromKeypair,
@@ -714,7 +741,7 @@ const server = http.createServer((req, res) => {
                     amount * (10 ** decimals)
                 );
 
-                // Construct transaction with priority instructions first
+                // build transaction
                 const transaction = new solanaWeb3.Transaction()
                   .add(...priorityIxs)
                   .add(burnInstruction);
@@ -757,6 +784,7 @@ const server = http.createServer((req, res) => {
                     throw new Error('Missing required parameters: mintAddress and holderAddress');
                 }
                 const percentageInfo = await getHolderPercentage(mintAddress, holderAddress);
+
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({
                     status: 'success',
@@ -787,6 +815,7 @@ const server = http.createServer((req, res) => {
                     throw new Error('Missing mint address parameter');
                 }
                 const priceInfo = await getTokenPrice(mintAddress);
+                
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({
                     status: 'success',
