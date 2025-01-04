@@ -687,7 +687,7 @@ const server = http.createServer((req, res) => {
 
                 // Priority fee in microLamports (1 lamport = 1e6 microLamports)
                 // e.g. 10000 microLamports = 0.00001 SOL
-                const priorityMicroLamports = 200000; // Adjust as needed
+                const priorityMicroLamports = 100000; // Adjust as needed
 
                 // Add compute budget instructions for priority fee
                 const priorityIxs = [
