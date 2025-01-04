@@ -41,80 +41,14 @@ class JupiterSwapTester {
         return data;
     }
 
-    /**
-     * Helper function to send + confirm a signed transaction with small internal retries
-     */
-    async _sendAndConfirmWithRetry(
-        serializedTx,
-        blockhash,
-        lastValidBlockHeight,
-        maxSolanaRetries = 3
-    ) {
-        let retriesLeft = maxSolanaRetries;
-        let finalError;
-
-        while (retriesLeft > 0) {
-            try {
-                // Send the raw transaction
-                const txid = await this.connection.sendRawTransaction(serializedTx, {
-                    skipPreflight: true,
-                    maxRetries: 3,
-                    preflightCommitment: 'processed',
-                });
-
-                logger.info(`sendRawTransaction returned: ${txid}`);
-
-                // Confirm using blockhash + lastValidBlockHeight
-                const confirmation = await this.connection.confirmTransaction(
-                    {
-                        signature: txid,
-                        blockhash,
-                        lastValidBlockHeight,
-                    },
-                    'confirmed'
-                );
-
-                if (confirmation.value.err) {
-                    throw new Error(`Transaction on-chain error: ${JSON.stringify(confirmation.value.err)}`);
-                }
-
-                // If we reach here, transaction is confirmed
-                return txid;
-            } catch (err) {
-                logger.warn(`Solana-level transaction attempt failed: ${err.message}`);
-                finalError = err;
-                retriesLeft--;
-                if (retriesLeft > 0) {
-                    logger.info(`Waiting 2s before next Solana-level retry... (${retriesLeft} left)`);
-                    await new Promise((resolve) => setTimeout(resolve, 2000));
-                }
-            }
-        }
-
-        throw new Error(`Failed to confirm after ${maxSolanaRetries} attempts. Last error: ${finalError}`);
-    }
-
-    /**
-     * Execute the Jupiter swap transaction with improved retry logic:
-     * - Re-build the transaction each time to get a fresh blockhash
-     * - Exponential backoff for 429 rate-limits or network issues
-     * - Re-try on "block height exceeded" or "expired signature" errors
-     */
     async executeSwap(quoteResponse) {
-        let maxRetries = 5;
-        let retryDelayMs = 2000;
-        let attempt = 0;
-
-        // We'll keep using the same quoteResponse, but re-fetch the transaction from Jupiter
-        // each time to ensure we get a fresh blockhash if it's expired.
-        while (attempt < maxRetries) {
-            attempt++;
-            try {
-                logger.info(`Preparing swap transaction (attempt ${attempt}/${maxRetries})...`);
-
-                // 1) Build the transaction from Jupiter’s /swap
-                const swapUrl = 'https://quote-api.jup.ag/v6/swap';
-                const swapBody = {
+        logger.info('Preparing swap transaction...');
+        
+        const { swapTransaction, lastValidBlockHeight } = await (
+            await fetch('https://quote-api.jup.ag/v6/swap', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
                     quoteResponse,
                     userPublicKey: this.wallet.publicKey.toString(),
                     wrapAndUnwrapSol: true,
@@ -123,88 +57,82 @@ class JupiterSwapTester {
                     prioritizationFeeLamports: {
                         priorityLevelWithMaxLamports: {
                             maxLamports: 10000000,
-                            priorityLevel: "veryHigh",
-                        },
-                    },
-                };
+                            priorityLevel: "veryHigh"
+                        }
+                    }
+                }),
+            })
+        ).json();
 
-                const swapResponse = await fetch(swapUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(swapBody),
-                });
+        logger.info('Deserializing transaction...');
+        const transaction = VersionedTransaction.deserialize(
+            Buffer.from(swapTransaction, 'base64')
+        );
 
-                if (!swapResponse.ok) {
-                    throw new Error(
-                        `Jupiter /swap responded with status ${swapResponse.status} (${swapResponse.statusText})`
-                    );
+        logger.info('Signing transaction...');
+        transaction.sign([this.wallet.payer]);
+
+        // Get signature for logging
+        const signature = bs58.encode(transaction.signatures[0]);
+        
+        // Simulate transaction first
+        logger.info('Simulating transaction...');
+        const { value: simulatedResponse } = await this.connection.simulateTransaction(
+            transaction,
+            { replaceRecentBlockhash: true, commitment: 'processed' }
+        );
+
+        if (simulatedResponse.err) {
+            logger.error('Simulation failed:', simulatedResponse);
+            throw new Error(`Transaction simulation failed: ${JSON.stringify(simulatedResponse.err)}`);
+        }
+
+        logger.info('Simulation successful, sending transaction...');
+        
+        // Use the blockhash from the transaction message
+        const blockhash = transaction.message.recentBlockhash;
+        const serializedTransaction = transaction.serialize();
+
+        // Send with retries
+        let retries = 3;
+        while (retries > 0) {
+            try {
+                const txid = await this.connection.sendRawTransaction(
+                    serializedTransaction,
+                    {
+                        skipPreflight: true,
+                        maxRetries: 3,
+                        preflightCommitment: 'processed'
+                    }
+                );
+
+                logger.info(`Transaction sent: ${txid}`);
+
+                // Wait for confirmation with proper blockhash
+                const confirmation = await this.connection.confirmTransaction({
+                    signature: txid,
+                    blockhash: blockhash,
+                    lastValidBlockHeight: lastValidBlockHeight
+                }, 'confirmed');
+
+                if (confirmation.value.err) {
+                    throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
                 }
 
-                const { swapTransaction, lastValidBlockHeight } = await swapResponse.json();
-                logger.info('Deserializing transaction from Jupiter...');
-
-                // 2) Deserialize & sign
-                const transaction = VersionedTransaction.deserialize(
-                    Buffer.from(swapTransaction, 'base64')
-                );
-                transaction.sign([this.wallet.payer]);
-
-                // 3) (Optional) Simulate
-                logger.info('Simulating transaction...');
-                const simulation = await this.connection.simulateTransaction(transaction, {
-                    replaceRecentBlockhash: true,
-                    commitment: 'processed',
-                });
-
-                if (simulation.value.err) {
-                    logger.error('Simulation failed:', simulation.value);
-                    throw new Error(`Transaction simulation failed: ${JSON.stringify(simulation.value.err)}`);
-                }
-                logger.info('Simulation successful. Sending transaction...');
-
-                // 4) Send + confirm
-                const serializedTx = transaction.serialize();
-                const blockhash = transaction.message.recentBlockhash;
-                const txid = await this._sendAndConfirmWithRetry(
-                    serializedTx,
-                    blockhash,
-                    lastValidBlockHeight
-                );
-
-                logger.info('Transaction confirmed successfully!');
+                logger.info('Transaction confirmed successfully');
                 logger.info(`Transaction URL: https://solscan.io/tx/${txid}`);
-                return txid; // success!
+                return txid;
 
             } catch (error) {
-                logger.error(`Swap attempt ${attempt} failed: ${error.message}`);
-
-                // Check if it's a blockhash expired or 429 rate-limit error
-                const isBlockhashError =
-                    error.message.includes('expired') ||
-                    error.message.includes('block height exceeded');
-                const is429 = error.message.includes('429');
-
-                if (attempt < maxRetries) {
-                    logger.warn(
-                        `Retryable error (${
-                            isBlockhashError ? 'blockhash expired' : is429 ? '429 rate-limited' : 'other'
-                        }). Retrying in ${retryDelayMs} ms...`
-                    );
-                    await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
-                    retryDelayMs *= 2; // exponential backoff
-                } else {
-                    logger.error('All swap retries exhausted. Throwing final error.');
-                    throw error;
-                }
+                retries--;
+                if (retries === 0) throw error;
+                
+                logger.warn(`Transaction attempt failed, retrying... (${retries} retries left)`);
+                await new Promise(resolve => setTimeout(resolve, 2000));
             }
         }
     }
 
-    /**
-     * Higher-level test function:
-     * - Gets a quote from SOL -> token
-     * - Calls executeSwap(...) to finalize it
-     */
     async testSwap(tokenAddress, amountUSD = 0.03) {
         try {
             logger.info('='.repeat(50));
@@ -216,14 +144,14 @@ class JupiterSwapTester {
             
             logger.info(`Testing swap of ${amountUSD} USD to token ${tokenAddress}`);
             
-            // 1) Get quote
+            // Get quote
             const quote = await this.getQuote(
                 this.SOL_MINT,
                 tokenAddress,
                 amount
             );
 
-            // 2) Execute swap
+            // Execute swap
             const txid = await this.executeSwap(quote);
             
             logger.info('='.repeat(50));
@@ -241,4 +169,4 @@ class JupiterSwapTester {
     }
 }
 
-module.exports = JupiterSwapTester;
+module.exports = JupiterSwapTester; 
