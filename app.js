@@ -8,15 +8,15 @@ const {
 } = require('@solana/spl-token');
 const JupiterSwapTester = require('./swap');
 
-// Modify the connection setup to support both networks
+// Modify the connection setup to support both networks with improved timeouts
 const NETWORK = process.env.NETWORK || 'mainnet-beta'; // Change default to mainnet-beta
 const connection = new solanaWeb3.Connection(
     solanaWeb3.clusterApiUrl(NETWORK),
     {
-        commitment: 'confirmed',
-        confirmTransactionInitialTimeout: 60000,
+        commitment: 'finalized',
+        confirmTransactionInitialTimeout: 120000,  // 2 minutes
         disableRetryOnRateLimit: false,
-        timeout: 30000
+        timeout: 60000  // 60s
     }
 );
 
@@ -200,7 +200,8 @@ async function sendSol(fromPrivateKey, fromPublicKey, toAddress, amount) {
             })
         );
 
-        const signature = await solanaWeb3.sendAndConfirmTransaction(
+        // Use the new robust helper for transaction confirmation
+        const signature = await sendAndConfirmTransactionWithRetry(
             connection,
             transaction,
             [senderKeypair]
@@ -265,8 +266,8 @@ async function transferToken(fromPrivateKey, fromPublicKey, toAddress, mintAddre
 
         const transaction = new solanaWeb3.Transaction().add(transferInstruction);
         
-        // Send and confirm transaction
-        const signature = await solanaWeb3.sendAndConfirmTransaction(
+        // Use the new robust helper for transaction confirmation
+        const signature = await sendAndConfirmTransactionWithRetry(
             connection,
             transaction,
             [fromKeypair]
@@ -449,6 +450,59 @@ async function checkTokenBalance(walletAddress, mintAddress) {
         throw error;
     }
 }
+
+// Add these improved transaction handling functions near the top of the file, after the connection setup
+const sendAndConfirmTransactionWithRetry = async (
+  connection,
+  transaction,
+  signers,
+  maxRetries = 3
+) => {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      // Fetch a fresh, valid blockhash each attempt
+      const latestBlockhash = await connection.getLatestBlockhash('finalized');
+      transaction.recentBlockhash = latestBlockhash.blockhash;
+      transaction.lastValidBlockHeight = latestBlockhash.lastValidBlockHeight;
+
+      // Make sure all signers actually sign the transaction
+      transaction.sign(...signers);
+
+      // Send the serialized transaction
+      const rawTx = transaction.serialize();
+      const signature = await connection.sendRawTransaction(rawTx, {
+        skipPreflight: false,
+      });
+      console.log(`Transaction sent (attempt ${attempt}), signature: ${signature}`);
+
+      // Manually confirm with the blockhash and lastValidBlockHeight
+      const confirmation = await connection.confirmTransaction(
+        {
+          signature,
+          blockhash: latestBlockhash.blockhash,
+          lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+        },
+        'finalized'
+      );
+
+      // If there's no error in confirmation, we are good to go
+      if (!confirmation.value.err) {
+        console.log(`Transaction confirmed on attempt ${attempt}: ${signature}`);
+        return signature; // Success — return the signature
+      } else {
+        console.error('Transaction failed, but no explicit error; retrying...');
+      }
+    } catch (err) {
+      console.error(`Error on attempt ${attempt}`, err?.message || err);
+      if (attempt === maxRetries) throw err;
+      // Add delay between retries
+      await sleep(1000 * attempt);
+    }
+  }
+
+  // If all retries fail, throw
+  throw new Error('Failed to confirm transaction after multiple attempts');
+};
 
 // Create an HTTP server to receive triggers
 const server = http.createServer((req, res) => {
@@ -734,7 +788,8 @@ const server = http.createServer((req, res) => {
 
                 const transaction = new solanaWeb3.Transaction().add(burnInstruction);
 
-                const signature = await solanaWeb3.sendAndConfirmTransaction(
+                // Use the new robust helper
+                const signature = await sendAndConfirmTransactionWithRetry(
                     connection,
                     transaction,
                     [fromKeypair]
