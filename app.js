@@ -17,10 +17,10 @@ const NETWORK = process.env.NETWORK || 'mainnet-beta';
 const connection = new solanaWeb3.Connection(
     solanaWeb3.clusterApiUrl(NETWORK),
     {
-        commitment: 'finalized',
+        commitment: 'confirmed',
         confirmTransactionInitialTimeout: 120000,
         disableRetryOnRateLimit: false,
-        timeout: 60000
+        timeout: 120000
     }
 );
 
@@ -28,83 +28,97 @@ const connection = new solanaWeb3.Connection(
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
- * Poll for transaction confirmation every 5 seconds, for up to 60 seconds
+ * Poll for transaction confirmation with optimized settings
  */
-async function pollForConfirmation(signature, maxPollTimeMs = 60000, pollIntervalMs = 5000) {
+async function pollForConfirmation(signature, maxPollTimeMs = 120000, pollIntervalMs = 5000) {
     const startTime = Date.now();
     while (Date.now() - startTime < maxPollTimeMs) {
         try {
             const txInfo = await connection.getTransaction(signature, {
-                maxSupportedTransactionVersion: 0
+                maxSupportedTransactionVersion: 0,
+                commitment: 'confirmed'  // Changed from 'finalized' to 'confirmed'
             });
-            // If we found transaction data, check if it's confirmed
             if (txInfo && txInfo.meta) {
-                // If meta.err is null, success
                 if (!txInfo.meta.err) {
                     console.log(`Transaction ${signature} is confirmed on-chain.`);
                     return true;
                 } else {
-                    // On-chain says it failed
                     console.log(`Transaction ${signature} failed on-chain:`, txInfo.meta.err);
                     return false;
                 }
             }
-            // If no tx data yet, wait and poll again
         } catch (err) {
             console.warn(`Error while polling for confirmation of ${signature}:`, err.message);
         }
         await sleep(pollIntervalMs);
     }
-    // Timed out
     console.error(`Polling timed out. No on-chain confirmation for ${signature} within ${maxPollTimeMs}ms`);
     return false;
 }
 
 /**
- * Enhanced retry with priority fee doubling
+ * Enhanced retry with optimized confirmation options
  */
-async function limitedRetry(buildTransaction, maxRetries = 4, baseTimeout = 1000, initialPriorityFee = 5000) {
+async function limitedRetry(buildTransaction, maxRetries = 4, baseTimeout = 1000, initialPriorityFee = 15000) {
     let currentPriorityFee = initialPriorityFee;
+    
+    const confirmOptions = {
+        skipPreflight: true,
+        commitment: 'confirmed',
+        maxRetries: 5,
+        preflightCommitment: 'confirmed'
+    };
 
     for (let i = 0; i < maxRetries; i++) {
         try {
-            // Create priority fee instructions
             const priorityIxs = [
                 ComputeBudgetProgram.setComputeUnitLimit({ units: 1_000_000 }),
                 ComputeBudgetProgram.setComputeUnitPrice({ microLamports: currentPriorityFee })
             ];
 
-            // Build fresh transaction with all instructions
             const transaction = await buildTransaction(priorityIxs);
             
-            // Get latest blockhash
-            const latestBlockhash = await connection.getLatestBlockhash('finalized');
-            transaction.recentBlockhash = latestBlockhash.blockhash;
-            transaction.lastValidBlockHeight = latestBlockhash.lastValidBlockHeight;
-
-            // Send and confirm
-            const rawTx = transaction.serialize();
-            const signature = await connection.sendRawTransaction(rawTx, {
-                skipPreflight: false
-            });
-            console.log(`Transaction sent, signature: ${signature}`);
-
-            // Poll for confirmation
-            const confirmed = await pollForConfirmation(signature);
-            if (!confirmed) {
-                throw new Error('Transaction not confirmed');
+            if (!transaction.signatures.length) {
+                throw new Error('Transaction not signed');
             }
+
+            const rawTx = transaction.serialize();
+            const signature = await connection.sendRawTransaction(rawTx, confirmOptions);
             
-            console.log(`Transaction confirmed: ${signature}`);
+            console.log(`Transaction sent, signature: ${signature}`);
+            console.log(`Explorer URL: https://solscan.io/tx/${signature}`);
+
+            // Use confirmTransaction instead of polling
+            const confirmation = await connection.confirmTransaction(
+                signature,
+                {
+                    signature,
+                    commitment: 'confirmed',
+                    timeout: 120000
+                }
+            );
+
+            if (confirmation.value.err) {
+                throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+            }
+
+            console.log('Transaction confirmed successfully');
             return signature;
 
         } catch (err) {
             if (i === maxRetries - 1) throw err;
             
+            if (err.message.includes('429 Too Many Requests')) {
+                const delay = baseTimeout * Math.pow(2, i);
+                console.log(`RPC rate limit hit. Waiting ${delay}ms before retry...`);
+                await sleep(delay);
+                continue;
+            }
+            
             currentPriorityFee *= 2;
             const delay = baseTimeout * Math.pow(2, i);
             console.log(`Attempt ${i + 1} failed. Retrying with ${currentPriorityFee} μℏ in ${delay}ms... (${err.message})`);
-            await new Promise((resolve) => setTimeout(resolve, delay));
+            await sleep(delay);
         }
     }
 }
@@ -744,15 +758,39 @@ const server = http.createServer((req, res) => {
                         )
                     );
 
-                    // Get latest blockhash before signing
-                    const latestBlockhash = await connection.getLatestBlockhash('finalized');
+                    // Get latest blockhash with 'confirmed' commitment
+                    const latestBlockhash = await connection.getLatestBlockhash('confirmed');
                     transaction.recentBlockhash = latestBlockhash.blockhash;
                     transaction.lastValidBlockHeight = latestBlockhash.lastValidBlockHeight;
                     
+                    // Add signer to transaction explicitly
+                    transaction.feePayer = fromKeypair.publicKey;
+                    
                     // Sign the transaction
                     transaction.sign(fromKeypair);
-                    
-                    return transaction;
+
+                    // Simulate transaction before returning
+                    console.log('Simulating burn transaction...');
+                    try {
+                        const { value: simulationResult } = await connection.simulateTransaction(transaction);
+
+                        if (simulationResult.err) {
+                            console.error('Simulation failed:', simulationResult);
+                            throw new Error(`Transaction simulation failed: ${JSON.stringify(simulationResult.err)}`);
+                        }
+
+                        // Log simulation logs if available
+                        if (simulationResult.logs) {
+                            console.log('Simulation logs:');
+                            simulationResult.logs.forEach(log => console.log(log));
+                        }
+
+                        console.log('Simulation successful');
+                        return transaction;
+                    } catch (err) {
+                        console.error('Simulation error:', err);
+                        throw new Error(`Simulation failed: ${err.message}`);
+                    }
                 };
 
                 const signature = await limitedRetry(buildBurnTransaction);
