@@ -61,47 +61,52 @@ async function pollForConfirmation(signature, maxPollTimeMs = 60000, pollInterva
 }
 
 /**
- * Send transaction with up to N retries, each time polling for final on-chain confirmation.
+ * Enhanced retry with priority fee doubling
  */
-async function sendAndConfirmTransactionWithRetry(
-  connection,
-  transaction,
-  signers,
-  maxRetries = 3
-) {
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      // Get the latest blockhash
-      const latestBlockhash = await connection.getLatestBlockhash('finalized');
-      transaction.recentBlockhash = latestBlockhash.blockhash;
-      transaction.lastValidBlockHeight = latestBlockhash.lastValidBlockHeight;
+async function limitedRetry(buildTransaction, maxRetries = 4, baseTimeout = 1000, initialPriorityFee = 5000) {
+    let currentPriorityFee = initialPriorityFee;
 
-      // Sign transaction
-      transaction.sign(...signers);
+    for (let i = 0; i < maxRetries; i++) {
+        try {
+            // Create priority fee instructions
+            const priorityIxs = [
+                ComputeBudgetProgram.setComputeUnitLimit({ units: 1_000_000 }),
+                ComputeBudgetProgram.setComputeUnitPrice({ microLamports: currentPriorityFee })
+            ];
 
-      // Send
-      const rawTx = transaction.serialize();
-      const signature = await connection.sendRawTransaction(rawTx, {
-        skipPreflight: false
-      });
-      console.log(`Transaction sent (attempt ${attempt}), signature: ${signature}`);
+            // Build fresh transaction with all instructions
+            const transaction = await buildTransaction(priorityIxs);
+            
+            // Get latest blockhash
+            const latestBlockhash = await connection.getLatestBlockhash('finalized');
+            transaction.recentBlockhash = latestBlockhash.blockhash;
+            transaction.lastValidBlockHeight = latestBlockhash.lastValidBlockHeight;
 
-      // Instead of using confirmTransaction directly, poll for on-chain confirmation
-      const confirmed = await pollForConfirmation(signature);
-      if (confirmed) {
-        console.log(`Transaction confirmed on attempt ${attempt}: ${signature}`);
-        return signature;
-      } else {
-        console.error(`Transaction ${signature} not confirmed on-chain; retrying (attempt ${attempt})...`);
-      }
-    } catch (err) {
-      console.error(`Error on attempt ${attempt}:`, err?.message || err);
-      if (attempt === maxRetries) throw err;
-      // Delay before next attempt
-      await sleep(1000 * attempt);
+            // Send and confirm
+            const rawTx = transaction.serialize();
+            const signature = await connection.sendRawTransaction(rawTx, {
+                skipPreflight: false
+            });
+            console.log(`Transaction sent, signature: ${signature}`);
+
+            // Poll for confirmation
+            const confirmed = await pollForConfirmation(signature);
+            if (!confirmed) {
+                throw new Error('Transaction not confirmed');
+            }
+            
+            console.log(`Transaction confirmed: ${signature}`);
+            return signature;
+
+        } catch (err) {
+            if (i === maxRetries - 1) throw err;
+            
+            currentPriorityFee *= 2;
+            const delay = baseTimeout * Math.pow(2, i);
+            console.log(`Attempt ${i + 1} failed. Retrying with ${currentPriorityFee} μℏ in ${delay}ms... (${err.message})`);
+            await new Promise((resolve) => setTimeout(resolve, delay));
+        }
     }
-  }
-  throw new Error('Failed to confirm transaction after multiple attempts');
 }
 
 /**
@@ -714,18 +719,6 @@ const server = http.createServer((req, res) => {
                 console.log(`Burning ${amount} tokens from mint: ${mintAddress} ...`);
                 const mintPublicKey = new solanaWeb3.PublicKey(mintAddress);
 
-                // Priority fee in microLamports
-                const priorityMicroLamports = 150000; // 0.0002 SOL, adjust if needed
-
-                const priorityIxs = [
-                    ComputeBudgetProgram.setComputeUnitLimit({
-                        units: 1_400_000,
-                    }),
-                    ComputeBudgetProgram.setComputeUnitPrice({
-                        microLamports: priorityMicroLamports,
-                    }),
-                ];
-
                 // get or create token account
                 const fromATA = await getOrCreateAssociatedTokenAccount(
                     connection,
@@ -734,23 +727,30 @@ const server = http.createServer((req, res) => {
                     fromKeypair.publicKey
                 );
 
-                const burnInstruction = createBurnInstruction(
-                    fromATA.address,
-                    mintPublicKey,
-                    fromKeypair.publicKey,
-                    amount * (10 ** decimals)
-                );
+                // Create transaction builder function
+                const buildBurnTransaction = (priorityIxs) => {
+                    const transaction = new solanaWeb3.Transaction();
+                    
+                    // Add priority instructions first
+                    transaction.add(...priorityIxs);
+                    
+                    // Add burn instruction
+                    transaction.add(
+                        createBurnInstruction(
+                            fromATA.address,
+                            mintPublicKey,
+                            fromKeypair.publicKey,
+                            amount * (10 ** decimals)
+                        )
+                    );
+                    
+                    // Sign the transaction
+                    transaction.sign(fromKeypair);
+                    
+                    return transaction;
+                };
 
-                // build transaction
-                const transaction = new solanaWeb3.Transaction()
-                  .add(...priorityIxs)
-                  .add(burnInstruction);
-
-                const signature = await sendAndConfirmTransactionWithRetry(
-                    connection,
-                    transaction,
-                    [fromKeypair]
-                );
+                const signature = await limitedRetry(buildBurnTransaction);
 
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({

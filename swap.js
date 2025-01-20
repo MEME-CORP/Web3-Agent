@@ -1,9 +1,37 @@
 require('dotenv').config();
-const { Connection, Keypair, VersionedTransaction } = require('@solana/web3.js');
+const { Connection, Keypair, VersionedTransaction, ComputeBudgetProgram } = require('@solana/web3.js');
 const fetch = require('cross-fetch');
 const { Wallet } = require('@project-serum/anchor');
 const bs58 = require('bs58');
 const logger = require('./logger');
+
+/**
+ * Enhanced retry with priority fee doubling
+ */
+async function limitedRetry(fn, maxRetries = 4, baseTimeout = 1000, initialPriorityFee = 5000) {
+    let currentPriorityFee = initialPriorityFee;
+
+    for (let i = 0; i < maxRetries; i++) {
+        try {
+            // Create priority fee instructions with current fee
+            const priorityIxs = [
+                ComputeBudgetProgram.setComputeUnitLimit({ units: 1_000_000 }),
+                ComputeBudgetProgram.setComputeUnitPrice({ microLamports: currentPriorityFee })
+            ];
+
+            return await fn(priorityIxs);
+        } catch (err) {
+            if (i === maxRetries - 1) throw err;
+            
+            // Double the priority fee for next attempt
+            currentPriorityFee *= 2;
+            
+            const delay = baseTimeout * Math.pow(2, i);
+            logger.info(`Attempt ${i + 1} failed. Retrying with ${currentPriorityFee} μℏ in ${delay}ms... (${err.message})`);
+            await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+    }
+}
 
 class JupiterSwapTester {
     constructor() {
@@ -24,7 +52,7 @@ class JupiterSwapTester {
     }
 
     async getQuote(inputMint, outputMint, amount) {
-        const url = `https://quote-api.jup.ag/v6/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amount}&slippageBps=50`;
+        const url = `https://quote-api.jup.ag/v6/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amount}&slippageBps=1500`;
         logger.info(`Fetching quote from: ${url}`);
         const response = await fetch(url);
         if (!response.ok) {
@@ -37,6 +65,13 @@ class JupiterSwapTester {
 
     async executeSwap(quoteResponse) {
         logger.info('Preparing swap transaction...');
+        
+        // Check wallet balance before proceeding
+        const balance = await this.connection.getBalance(this.wallet.publicKey);
+        const minRequired = 100000; // 0.0001 SOL minimum required
+        if (balance < minRequired) {
+            throw new Error(`Insufficient SOL balance. Have ${balance} lamports, need minimum ${minRequired} lamports`);
+        }
         
         const resp = await fetch('https://quote-api.jup.ag/v6/swap', {
             method: 'POST',
@@ -69,52 +104,44 @@ class JupiterSwapTester {
         logger.info('Signing transaction...');
         transaction.sign([this.wallet.payer]);
 
-        const signature = bs58.encode(transaction.signatures[0]);
-        logger.info('Simulating transaction...');
-        const { value: simulatedResponse } = await this.connection.simulateTransaction(
-            transaction,
-            { replaceRecentBlockhash: true, commitment: 'processed' }
-        );
-        if (simulatedResponse.err) {
-            logger.error('Simulation failed:', simulatedResponse);
-            throw new Error(`Transaction simulation failed: ${JSON.stringify(simulatedResponse.err)}`);
-        }
-
-        logger.info('Simulation successful, sending transaction...');
-        let retries = 3;
-        while (retries > 0) {
-            try {
-                const txid = await this.connection.sendRawTransaction(
-                    transaction.serialize(),
-                    {
-                        skipPreflight: true,
-                        maxRetries: 3,
-                        preflightCommitment: 'processed'
-                    }
-                );
-                logger.info(`Transaction sent: ${txid}`);
-
-                const confirmation = await this.connection.confirmTransaction(
-                    txid,
-                    {
-                        signature: txid,
-                        commitment: 'confirmed',
-                        timeout: 120000
-                    }
-                );
-                if (confirmation.value.err) {
-                    throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
-                }
-                logger.info('Transaction confirmed successfully');
-                logger.info(`Transaction URL: https://solscan.io/tx/${txid}`);
-                return txid;
-            } catch (error) {
-                retries--;
-                if (retries === 0) throw error;
-                logger.warn(`Transaction attempt failed, retrying... (${retries} retries left)`);
-                await new Promise(resolve => setTimeout(resolve, 2000));
+        return await limitedRetry(async (priorityIxs) => {
+            const signature = bs58.encode(transaction.signatures[0]);
+            logger.info('Simulating transaction...');
+            const { value: simulatedResponse } = await this.connection.simulateTransaction(
+                transaction,
+                { replaceRecentBlockhash: true, commitment: 'processed' }
+            );
+            if (simulatedResponse.err) {
+                logger.error('Simulation failed:', simulatedResponse);
+                throw new Error(`Transaction simulation failed: ${JSON.stringify(simulatedResponse.err)}`);
             }
-        }
+
+            logger.info('Simulation successful, sending transaction...');
+            const txid = await this.connection.sendRawTransaction(
+                transaction.serialize(),
+                {
+                    skipPreflight: true,
+                    maxRetries: 3,
+                    preflightCommitment: 'processed'
+                }
+            );
+            logger.info(`Transaction sent: ${txid}`);
+
+            const confirmation = await this.connection.confirmTransaction(
+                txid,
+                {
+                    signature: txid,
+                    commitment: 'confirmed',
+                    timeout: 120000
+                }
+            );
+            if (confirmation.value.err) {
+                throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+            }
+            logger.info('Transaction confirmed successfully');
+            logger.info(`Transaction URL: https://solscan.io/tx/${txid}`);
+            return txid;
+        });
     }
 
     async testSwap(tokenAddress, amountUSD = 0.03) {
