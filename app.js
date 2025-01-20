@@ -728,7 +728,7 @@ const server = http.createServer((req, res) => {
                 );
 
                 // Create transaction builder function
-                const buildBurnTransaction = (priorityIxs) => {
+                const buildBurnTransaction = async (priorityIxs) => {
                     const transaction = new solanaWeb3.Transaction();
                     
                     // Add priority instructions first
@@ -743,6 +743,11 @@ const server = http.createServer((req, res) => {
                             amount * (10 ** decimals)
                         )
                     );
+
+                    // Get latest blockhash before signing
+                    const latestBlockhash = await connection.getLatestBlockhash('finalized');
+                    transaction.recentBlockhash = latestBlockhash.blockhash;
+                    transaction.lastValidBlockHeight = latestBlockhash.lastValidBlockHeight;
                     
                     // Sign the transaction
                     transaction.sign(fromKeypair);
