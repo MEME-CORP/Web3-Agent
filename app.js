@@ -18,9 +18,9 @@ const connection = new solanaWeb3.Connection(
     solanaWeb3.clusterApiUrl(NETWORK),
     {
         commitment: 'confirmed',
-        confirmTransactionInitialTimeout: 120000,
+        confirmTransactionInitialTimeout: 60000,
         disableRetryOnRateLimit: false,
-        timeout: 120000
+        timeout: 60000
     }
 );
 
@@ -30,7 +30,7 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 /**
  * Poll for transaction confirmation with optimized settings
  */
-async function pollForConfirmation(signature, maxPollTimeMs = 120000, pollIntervalMs = 5000) {
+async function pollForConfirmation(signature, maxPollTimeMs = 60000, pollIntervalMs = 5000) {
     const startTime = Date.now();
     while (Date.now() - startTime < maxPollTimeMs) {
         try {
@@ -59,11 +59,11 @@ async function pollForConfirmation(signature, maxPollTimeMs = 120000, pollInterv
 /**
  * Enhanced retry with optimized confirmation options
  */
-async function limitedRetry(buildTransaction, maxRetries = 4, baseTimeout = 1000, initialPriorityFee = 15000) {
+async function limitedRetry(buildTransaction, maxRetries = 4, baseTimeout = 1000, initialPriorityFee = 40000) {
     let currentPriorityFee = initialPriorityFee;
     
     const confirmOptions = {
-        skipPreflight: true,
+        skipPreflight: false,
         commitment: 'confirmed',
         maxRetries: 5,
         preflightCommitment: 'confirmed'
@@ -76,6 +76,7 @@ async function limitedRetry(buildTransaction, maxRetries = 4, baseTimeout = 1000
                 ComputeBudgetProgram.setComputeUnitPrice({ microLamports: currentPriorityFee })
             ];
 
+            console.log(`\nAttempt ${i + 1} with priority fee: ${currentPriorityFee} μℏ`);
             const transaction = await buildTransaction(priorityIxs);
             
             if (!transaction.signatures.length) {
@@ -85,24 +86,73 @@ async function limitedRetry(buildTransaction, maxRetries = 4, baseTimeout = 1000
             const rawTx = transaction.serialize();
             const signature = await connection.sendRawTransaction(rawTx, confirmOptions);
             
-            console.log(`Transaction sent, signature: ${signature}`);
+            console.log('\nTransaction Details:');
+            console.log(`Signature: ${signature}`);
             console.log(`Explorer URL: https://solscan.io/tx/${signature}`);
+            console.log('Waiting for confirmation...');
 
-            // Use confirmTransaction instead of polling
-            const confirmation = await connection.confirmTransaction(
+            // Enhanced confirmation logic with multiple verification steps
+            const latestBlockhash = await connection.getLatestBlockhash('confirmed');
+            
+            // Step 1: Initial confirmation check
+            const confirmationResponse = await connection.confirmTransaction({
                 signature,
-                {
-                    signature,
-                    commitment: 'confirmed',
-                    timeout: 120000
-                }
-            );
+                blockhash: latestBlockhash.blockhash,
+                lastValidBlockHeight: latestBlockhash.lastValidBlockHeight
+            }, 'confirmed');
 
-            if (confirmation.value.err) {
-                throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+            // Step 2: Verify confirmation status
+            if (confirmationResponse?.value?.err) {
+                throw new Error(`Transaction failed: ${JSON.stringify(confirmationResponse.value.err)}`);
             }
 
-            console.log('Transaction confirmed successfully');
+            // Step 3: Additional status verification
+            const maxRetries = 3;
+            let retryCount = 0;
+            let status = null;
+
+            while (retryCount < maxRetries) {
+                status = await connection.getSignatureStatus(signature, {
+                    searchTransactionHistory: true
+                });
+
+                if (status?.value?.confirmationStatus === 'confirmed' || 
+                    status?.value?.confirmationStatus === 'finalized') {
+                    break;
+                }
+
+                retryCount++;
+                await sleep(1000);
+            }
+
+            if (!status?.value) {
+                throw new Error('Failed to get transaction status');
+            }
+
+            if (status.value.err) {
+                throw new Error(`Transaction failed: ${JSON.stringify(status.value.err)}`);
+            }
+
+            // Step 4: Final transaction verification
+            const txDetails = await connection.getTransaction(signature, {
+                maxSupportedTransactionVersion: 0,
+                commitment: 'confirmed'
+            });
+
+            if (!txDetails) {
+                throw new Error('Failed to get transaction details');
+            }
+
+            console.log('\nTransaction Execution Details:');
+            if (txDetails.meta?.logMessages) {
+                console.log('Program Logs:');
+                txDetails.meta.logMessages.forEach(log => console.log(`  ${log}`));
+            }
+            if (txDetails.meta?.postTokenBalances) {
+                console.log('Post Token Balances:', txDetails.meta.postTokenBalances);
+            }
+
+            console.log(`\nTransaction confirmed successfully with status: ${status.value.confirmationStatus}`);
             return signature;
 
         } catch (err) {
