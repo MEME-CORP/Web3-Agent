@@ -59,7 +59,7 @@ async function pollForConfirmation(signature, maxPollTimeMs = 60000, pollInterva
 /**
  * Enhanced retry with optimized confirmation options
  */
-async function limitedRetry(buildTransaction, maxRetries = 4, baseTimeout = 1000, initialPriorityFee = 40000) {
+async function limitedRetry(buildTransaction, maxRetries = 4, baseTimeout = 1000, initialPriorityFee = 35000) {
     let currentPriorityFee = initialPriorityFee;
     
     const confirmOptions = {
@@ -91,69 +91,63 @@ async function limitedRetry(buildTransaction, maxRetries = 4, baseTimeout = 1000
             console.log(`Explorer URL: https://solscan.io/tx/${signature}`);
             console.log('Waiting for confirmation...');
 
-            // Enhanced confirmation logic with multiple verification steps
+            // New confirmation logic with subscription
             const latestBlockhash = await connection.getLatestBlockhash('confirmed');
             
-            // Step 1: Initial confirmation check
-            const confirmationResponse = await connection.confirmTransaction({
-                signature,
-                blockhash: latestBlockhash.blockhash,
-                lastValidBlockHeight: latestBlockhash.lastValidBlockHeight
-            }, 'confirmed');
-
-            // Step 2: Verify confirmation status
-            if (confirmationResponse?.value?.err) {
-                throw new Error(`Transaction failed: ${JSON.stringify(confirmationResponse.value.err)}`);
-            }
-
-            // Step 3: Additional status verification
-            const maxRetries = 3;
-            let retryCount = 0;
-            let status = null;
-
-            while (retryCount < maxRetries) {
-                status = await connection.getSignatureStatus(signature, {
-                    searchTransactionHistory: true
-                });
-
-                if (status?.value?.confirmationStatus === 'confirmed' || 
-                    status?.value?.confirmationStatus === 'finalized') {
-                    break;
-                }
-
-                retryCount++;
-                await sleep(1000);
-            }
-
-            if (!status?.value) {
-                throw new Error('Failed to get transaction status');
-            }
-
-            if (status.value.err) {
-                throw new Error(`Transaction failed: ${JSON.stringify(status.value.err)}`);
-            }
-
-            // Step 4: Final transaction verification
-            const txDetails = await connection.getTransaction(signature, {
-                maxSupportedTransactionVersion: 0,
-                commitment: 'confirmed'
+            // Create a promise that resolves on confirmation
+            const confirmationPromise = new Promise((resolve, reject) => {
+                let subscription = null;
+                
+                // Set timeout for overall confirmation
+                const timeoutId = setTimeout(() => {
+                    if (subscription) {
+                        connection.removeSignatureListener(subscription);
+                    }
+                    reject(new Error('Confirmation timeout'));
+                }, 60000); // 60 second timeout
+                
+                // Subscribe to transaction status
+                subscription = connection.onSignature(
+                    signature,
+                    async (result, context) => {
+                        clearTimeout(timeoutId);
+                        if (subscription) {
+                            connection.removeSignatureListener(subscription);
+                        }
+                        
+                        if (result.err) {
+                            reject(new Error(`Transaction failed: ${result.err}`));
+                        } else {
+                            // Verify transaction status
+                            const confirmedTx = await connection.getTransaction(signature, {
+                                maxSupportedTransactionVersion: 0,
+                                commitment: 'confirmed'
+                            });
+                            
+                            if (confirmedTx && !confirmedTx.meta?.err) {
+                                resolve(signature);
+                            } else {
+                                reject(new Error('Transaction verification failed'));
+                            }
+                        }
+                    },
+                    'confirmed'
+                );
             });
 
-            if (!txDetails) {
-                throw new Error('Failed to get transaction details');
+            // Wait for confirmation or timeout
+            try {
+                const confirmedSignature = await confirmationPromise;
+                console.log(`Transaction confirmed successfully: ${confirmedSignature}`);
+                return confirmedSignature;
+            } catch (confirmError) {
+                if (i === maxRetries - 1) throw confirmError;
+                
+                console.log(`Confirmation failed, retrying... (${confirmError.message})`);
+                currentPriorityFee *= 2;
+                await sleep(baseTimeout * Math.pow(2, i));
+                continue;
             }
-
-            console.log('\nTransaction Execution Details:');
-            if (txDetails.meta?.logMessages) {
-                console.log('Program Logs:');
-                txDetails.meta.logMessages.forEach(log => console.log(`  ${log}`));
-            }
-            if (txDetails.meta?.postTokenBalances) {
-                console.log('Post Token Balances:', txDetails.meta.postTokenBalances);
-            }
-
-            console.log(`\nTransaction confirmed successfully with status: ${status.value.confirmationStatus}`);
-            return signature;
 
         } catch (err) {
             if (i === maxRetries - 1) throw err;
