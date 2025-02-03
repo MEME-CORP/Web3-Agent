@@ -27,6 +27,18 @@ const connection = new solanaWeb3.Connection(
 // Simple sleep utility
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+// Add Token2022 program ID constant
+const TOKEN_2022_PROGRAM_ID = new solanaWeb3.PublicKey('TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb');
+const TOKEN_PROGRAM_ID = new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+
+// Add confirmOptions as a shared configuration
+const confirmOptions = {
+    skipPreflight: false,
+    commitment: 'confirmed',
+    maxRetries: 5,
+    preflightCommitment: 'confirmed'
+};
+
 /**
  * Poll for transaction confirmation with optimized settings
  */
@@ -59,16 +71,9 @@ async function pollForConfirmation(signature, maxPollTimeMs = 60000, pollInterva
 /**
  * Enhanced retry with optimized confirmation options
  */
-async function limitedRetry(buildTransaction, maxRetries = 4, baseTimeout = 1000, initialPriorityFee = 35000) {
+async function limitedRetry(buildTransaction, maxRetries = 4, baseTimeout = 1000, initialPriorityFee = 30000) {
     let currentPriorityFee = initialPriorityFee;
     
-    const confirmOptions = {
-        skipPreflight: false,
-        commitment: 'confirmed',
-        maxRetries: 5,
-        preflightCommitment: 'confirmed'
-    };
-
     for (let i = 0; i < maxRetries; i++) {
         try {
             const priorityIxs = [
@@ -91,43 +96,85 @@ async function limitedRetry(buildTransaction, maxRetries = 4, baseTimeout = 1000
             console.log(`Explorer URL: https://solscan.io/tx/${signature}`);
             console.log('Waiting for confirmation...');
 
-            // New confirmation logic with subscription
-            const latestBlockhash = await connection.getLatestBlockhash('confirmed');
-            
             // Create a promise that resolves on confirmation
             const confirmationPromise = new Promise((resolve, reject) => {
                 let subscription = null;
+                let isResolved = false;
                 
-                // Set timeout for overall confirmation
-                const timeoutId = setTimeout(() => {
+                // Active polling function
+                const pollConfirmation = async () => {
+                    try {
+                        const status = await connection.getSignatureStatus(signature, {
+                            searchTransactionHistory: true
+                        });
+                        
+                        if (status?.value?.confirmationStatus === 'confirmed' || 
+                            status?.value?.confirmationStatus === 'finalized') {
+                            if (!isResolved) {
+                                isResolved = true;
+                                if (subscription) {
+                                    connection.removeSignatureListener(subscription);
+                                }
+                                clearTimeout(timeoutId);
+                                resolve(signature);
+                            }
+                            return true;
+                        }
+                        
+                        if (status?.value?.err) {
+                            if (!isResolved) {
+                                isResolved = true;
+                                if (subscription) {
+                                    connection.removeSignatureListener(subscription);
+                                }
+                                clearTimeout(timeoutId);
+                                reject(new Error(`Transaction failed: ${status.value.err}`));
+                            }
+                            return true;
+                        }
+                        
+                        return false;
+                    } catch (err) {
+                        return false;
+                    }
+                };
+
+                // Start polling every 2 seconds
+                const pollInterval = setInterval(async () => {
+                    if (await pollConfirmation()) {
+                        clearInterval(pollInterval);
+                    }
+                }, 2000);
+
+                // Backup timeout (reduced to 30 seconds since we're actively polling)
+                const timeoutId = setTimeout(async () => {
+                    clearInterval(pollInterval);
                     if (subscription) {
                         connection.removeSignatureListener(subscription);
                     }
-                    reject(new Error('Confirmation timeout'));
-                }, 60000); // 60 second timeout
+                    
+                    // Final check before timeout
+                    if (!await pollConfirmation()) {
+                        reject(new Error('Confirmation timeout'));
+                    }
+                }, 30000);
                 
-                // Subscribe to transaction status
+                // Keep subscription as backup
                 subscription = connection.onSignature(
                     signature,
                     async (result, context) => {
-                        clearTimeout(timeoutId);
-                        if (subscription) {
-                            connection.removeSignatureListener(subscription);
-                        }
-                        
-                        if (result.err) {
-                            reject(new Error(`Transaction failed: ${result.err}`));
-                        } else {
-                            // Verify transaction status
-                            const confirmedTx = await connection.getTransaction(signature, {
-                                maxSupportedTransactionVersion: 0,
-                                commitment: 'confirmed'
-                            });
+                        if (!isResolved) {
+                            isResolved = true;
+                            clearInterval(pollInterval);
+                            clearTimeout(timeoutId);
+                            if (subscription) {
+                                connection.removeSignatureListener(subscription);
+                            }
                             
-                            if (confirmedTx && !confirmedTx.meta?.err) {
-                                resolve(signature);
+                            if (result.err) {
+                                reject(new Error(`Transaction failed: ${result.err}`));
                             } else {
-                                reject(new Error('Transaction verification failed'));
+                                resolve(signature);
                             }
                         }
                     },
@@ -141,6 +188,22 @@ async function limitedRetry(buildTransaction, maxRetries = 4, baseTimeout = 1000
                 console.log(`Transaction confirmed successfully: ${confirmedSignature}`);
                 return confirmedSignature;
             } catch (confirmError) {
+                // Before retrying, verify transaction status
+                try {
+                    const status = await connection.getSignatureStatus(signature, {
+                        searchTransactionHistory: true
+                    });
+                    
+                    // If transaction is actually successful, return it
+                    if (status?.value?.confirmationStatus === 'confirmed' || 
+                        status?.value?.confirmationStatus === 'finalized') {
+                        console.log(`Transaction ${signature} was actually successful`);
+                        return signature;
+                    }
+                } catch (statusError) {
+                    console.warn(`Error checking transaction status: ${statusError.message}`);
+                }
+                
                 if (i === maxRetries - 1) throw confirmError;
                 
                 console.log(`Confirmation failed, retrying... (${confirmError.message})`);
@@ -530,6 +593,20 @@ async function getTokenPrice(mintAddress) {
     }
 }
 
+// Add helper to determine program ID
+async function getTokenProgramId(mintAddress) {
+    try {
+        const mintInfo = await connection.getAccountInfo(new solanaWeb3.PublicKey(mintAddress));
+        if (mintInfo.owner.equals(TOKEN_2022_PROGRAM_ID)) {
+            return TOKEN_2022_PROGRAM_ID;
+        }
+        return TOKEN_PROGRAM_ID;
+    } catch (error) {
+        console.error('Error getting mint info:', error);
+        throw error;
+    }
+}
+
 /**
  * Create and start the HTTP server
  */
@@ -776,13 +853,21 @@ const server = http.createServer((req, res) => {
 
                 console.log(`Burning ${amount} tokens from mint: ${mintAddress} ...`);
                 const mintPublicKey = new solanaWeb3.PublicKey(mintAddress);
+                
+                // Get the correct program ID for the mint
+                const programId = await getTokenProgramId(mintAddress);
+                console.log(`Using token program: ${programId.toString()}`);
 
-                // get or create token account
+                // Get or create token account using correct program
                 const fromATA = await getOrCreateAssociatedTokenAccount(
                     connection,
                     fromKeypair,
                     mintPublicKey,
-                    fromKeypair.publicKey
+                    fromKeypair.publicKey,
+                    false,  // allowOwnerOffCurve
+                    'confirmed',  // commitment
+                    confirmOptions,  // confirmOptions
+                    programId  // programId
                 );
 
                 // Create transaction builder function
@@ -792,13 +877,15 @@ const server = http.createServer((req, res) => {
                     // Add priority instructions first
                     transaction.add(...priorityIxs);
                     
-                    // Add burn instruction
+                    // Add burn instruction with correct program ID
                     transaction.add(
                         createBurnInstruction(
                             fromATA.address,
                             mintPublicKey,
                             fromKeypair.publicKey,
-                            amount * (10 ** decimals)
+                            amount * (10 ** decimals),
+                            [],  // multiSigners
+                            programId  // programId
                         )
                     );
 

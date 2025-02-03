@@ -1,0 +1,52 @@
+{
+    "wallets": [
+      {
+        "publicKey": "DRA8SWQZNeyAomCbGCVhebVdBYtYHPVpZqJrWqA7EhwZ",
+        "privateKey": "27roFNzLtmtbtdiJ123Jpi3ZCqYdLXguqnTB6dF4n3C2R9erABsT4zAQGCeHvyTddZoXHL9NmLs46Rxdomb6PUtj"
+      },
+      {
+        "publicKey": "7rxuYv9xtbfQCnQb7QwYRoSa7XVzQnjLLayXcrsWSBAx",
+        "privateKey": "3zysbPf22qpi9URRfFG5qS8oe2x2EhyUyY3TQHDGDHHiq4DQfA33DVLQenFvTGq16FXRD3sqCJAu2uCcAC6dZJ2c"
+      },
+      {
+        "publicKey": "HY2krhtSB2PCQzKaDRZhiuPZs4NRQT5CxHoM5i9QHLqD",
+        "privateKey": "5k9MMAPGP5VeHatHWzuED9sk8NV3i4rxmES4ges9vdtG42sumsriARJxvrXuaEvEv2e5DG62ra4PMUgqZ7Wi52po"
+      },
+      {
+        "publicKey": "6AnzxnS8yyriNXzGHWhauNNAb1rK7M8VDYXqAUvYeNrR",
+        "privateKey": "52qaoe8WFFbE9gs5kVGbB76zL69LLqMowKCAMs2J7HzkbpoSf2V6yVRWP6VvJ6QXewa99qNWkgYV1Htp3T5RER6u"
+      },
+      {
+        "publicKey": "5X3ZY3tUTuQnTcKFR2rig29FKuQsxt4VARZY8VjFZp1B",
+        "privateKey": "5RAfcPPcU7hR8xf3a9iXbuhd2nJtQK7heq4QoPty6AVQawKDsRhnUa52tqviDahCMYoH6P8qnU5T2crL2E5QPpeh"
+      },
+      {
+        "publicKey": "6WJsmWqfTX9yYRtQMcJofaLcK6eQg8Q5LDjiARFngvyp",
+        "privateKey": "4231ztXZzKJRAL92Q82zRgBdU7qbsXdpr6fu9Jw5VVyTpt9WmVaRvpRzRr2ZjGX1EPTsNea53iZNtZUbtEwY226"
+      },
+      {
+        "publicKey": "GbVwhdLFFviVHkvyxkHqMS5EFgrT4RgqJ9PG6QPkAiLm",
+        "privateKey": "2BrnpWshQC3CMFTGtB4oz2LpR248xu7GQ94KfuqZspMT8K4Ky15qJu5wob5fTbZZVRuB1firCXUNJpmPDxuzrtpD"
+      },
+      {
+        "publicKey": "8tSvW25TqbF5LEVXBpkkhSv12RN4vA7sgfRfwgo9GVsa",
+        "privateKey": "2BHAjo4YWDfM948Mi2xMnJKsj6Rc17R6GX9dHGiV2PfRrGuUWd7cnm895ShD1trHPZNRdwFYjVsqKYpyqNtzYkEx"
+      },
+      {
+        "publicKey": "ABKjTv9UNnpJMDsiVkKZTQB7Fppds7T7y7zACMnRuory",
+        "privateKey": "3ndb49jThWZdEhZ7oLZWXhGPVgxu5cR6Yt7SarswCgqr7jfgyB5Ah94dJCRjgTKWHpA7s6nXViqfR6HgPmn3fdDK"
+      },
+      {
+        "publicKey": "BDNQfB59x6bJDAcEYw8AwC3GU8rgSxFB62jECbgxdBNp",
+        "privateKey": "sXcWw2tvY8MgUddxX4iN8kTWmamsDejJe3W5xUCxL1jKR5zczYMoBLA5mdJYiyELrYVfdpU2SE4jGab6SsjEaeU"
+      },
+      {
+        "publicKey": "2V1XdohpyFvsZNkkAJX49VrzDXTMw5v5tYGqqC4TAksn",
+        "privateKey": "4Yjx1kaVd2PtUR7TvCWPYci8pPXsr84aEqVrRt53EgeXqXDaL6EkdkbhMoeHxbrkwtDYAkWQ7fe2woZ76ofrgoXA"
+      },
+      {
+        "publicKey": "E1FohUCdxwzJCK4XtYF4yqZRUETJ9uYXnmUrc7t82LKq",
+        "privateKey": "4TsxNeEwXR2kcNfW1vzAckTpcV8ibsXAJVSiQzSBgcvjJrNtmVRGd1Fy8em9RD5p7nJs61f5c4CD6NP2D6BVqd83"
+      }
+    ]
+  }
